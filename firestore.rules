@@ -1,0 +1,386 @@
+rules_version = '2';
+
+// CZiumERP multi-tenant security rules — deny by default.
+//
+// Identity comes from Firebase Auth custom claims, set only by the Admin SDK
+// (scripts/manage-auth-users.mjs or the setUserClaims Cloud Function):
+//   request.auth.token.tenantId    — the ONE workspace this user belongs to
+//   request.auth.token.role        — 'admin' | 'manager' | 'cashier' | 'inventory-staff'
+//   request.auth.token.superAdmin  — platform operators only
+//
+// Cross-tenant access is impossible by structure: all business data lives at
+// /tenants/{tenantId}/... and every rule requires the caller's tenantId claim
+// to equal the path segment.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isSuperAdmin() {
+      return signedIn() && request.auth.token.get('superAdmin', false) == true;
+    }
+    function inTenant(tenantId) {
+      return signedIn() && request.auth.token.get('tenantId', '') == tenantId;
+    }
+    function role() {
+      return signedIn() ? request.auth.token.get('role', '') : '';
+    }
+    function isTenantAdmin(tenantId) {
+      return inTenant(tenantId) && role() == 'admin';
+    }
+    function isManager(tenantId) {
+      return inTenant(tenantId) && role() in ['admin', 'manager'];
+    }
+    function isStaff(tenantId) {
+      return inTenant(tenantId) && role() in ['admin', 'manager', 'cashier', 'inventory-staff'];
+    }
+    function tenantActive(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)).data.status == 'active';
+    }
+    function moduleEnabled(tenantId, m) {
+      return m in get(/databases/$(database)/documents/tenants/$(tenantId)).data.enabledModules;
+    }
+
+    // ---------------- Platform-level collections ----------------
+
+    // Public organization sign-up requests (created from /register, pre-auth).
+    // Strictly validated shape; readable/manageable only by super admins.
+    match /registrationRequests/{id} {
+      allow create: if request.resource.data.keys().hasOnly(
+          ['organizationName', 'contactName', 'contactEmail', 'industry',
+           'blueprintId', 'status', 'createdAt'])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.organizationName is string
+        && request.resource.data.organizationName.size() > 1
+        && request.resource.data.organizationName.size() < 200
+        && request.resource.data.contactEmail is string
+        && request.resource.data.contactEmail.size() < 200;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // Lightweight tenant lookup (login checks suspension status).
+    match /tenantDirectory/{tenantId} {
+      allow read: if signedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    match /superAdmins/{uid} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // managed exclusively via Admin SDK
+    }
+
+    // Vertical blueprints: the data-driven catalog of company types. Readable
+    // by anyone signed in (tenant apps read label overrides; the sign-up flow
+    // lists them) and by the public register page pre-auth. Only super admins
+    // define or edit them — so a new vertical needs no code deploy.
+    match /verticalBlueprints/{id} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Shared FX rate cache (tenant-independent, base USD) — written only by the
+    // refreshFxRates/refreshFxRatesNow Cloud Functions via the Admin SDK, which
+    // bypasses these rules entirely. No client ever reads this directly; the
+    // client-side FX widget hits the external rate API on its own instead.
+    match /systemConfig/{id} {
+      allow read, write: if false;
+    }
+
+    // ---------------- Tenant tree ----------------
+
+    match /tenants/{tenantId} {
+      // Tenant root doc: profile, plan, allowed/enabled modules
+      allow read: if inTenant(tenantId) || isSuperAdmin();
+      // Tenant admins may toggle enabledModules — but only within the
+      // super-admin-granted allowance, and may touch nothing else.
+      allow update: if isSuperAdmin()
+        || (isTenantAdmin(tenantId) && tenantActive(tenantId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enabledModules'])
+            && request.resource.data.enabledModules.toSet().hasOnly(resource.data.allowedModules.toSet()));
+      allow create, delete: if isSuperAdmin();
+
+      // Per-tenant settings (branding, module toggles within allowance)
+      match /settings/{docId} {
+        allow read: if inTenant(tenantId) || isSuperAdmin();
+        allow write: if isSuperAdmin()
+          || (isTenantAdmin(tenantId) && tenantActive(tenantId));
+      }
+
+      // Tenant-defined custom field definitions. Seeded from the tenant's
+      // blueprint at onboarding (via super admin), then managed by the tenant
+      // admin. All staff read them so forms can render the extra inputs.
+      match /customFieldDefinitions/{id} {
+        allow read: if (isStaff(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+        allow write: if isSuperAdmin()
+          || (isTenantAdmin(tenantId) && tenantActive(tenantId));
+      }
+
+      // ---- Identity & access (tenant-admin controlled) ----
+      match /users/{id} {
+        allow read: if (isStaff(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+        // Self-heal: a signed-in member may create their own profile doc (id == uid)
+        allow create: if isSuperAdmin()
+          || (isTenantAdmin(tenantId) && tenantActive(tenantId))
+          || (inTenant(tenantId) && tenantActive(tenantId) && id == request.auth.uid);
+        allow update, delete: if isSuperAdmin()
+          || (isTenantAdmin(tenantId) && tenantActive(tenantId));
+      }
+
+      // ---- Finance: ledger append-only for managers; corrections admin-only ----
+      match /ledgerEntries/{id} {
+        allow read, create: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Financial Management');
+        allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /taxRates/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      // Same access model as ledgerEntries, since posting one always writes both.
+      match /intercompanyTransactions/{id} {
+        allow read, create: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Financial Management');
+        allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      // Posted payroll periods — same access model as ledgerEntries, since posting
+      // one always writes to both.
+      match /payrollRuns/{id} {
+        allow read, create: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Financial Management');
+        allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /budgets/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Financial Management');
+      }
+      match /vendorBills/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Financial Management');
+      }
+
+      // ---- HR: salary/leave data restricted to managers ----
+      match /employees/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      match /attendance/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      match /leaveRequests/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      match /performanceReviews/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      match /candidates/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      match /jobRequisitions/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+      }
+      // Tenant-wide outgoing mail server — one per tenant, admin-managed.
+      // Staff can read (to know whether a template is active before sending);
+      // only admins can change SMTP credentials or edit templates.
+      match /smtpConfig/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /emailTemplates/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /emailLogs/{id} {
+        allow read: if isManager(tenantId) && tenantActive(tenantId);
+        allow create: if isStaff(tenantId) && tenantActive(tenantId);
+        allow update, delete: if false; // audit trail is immutable
+      }
+
+      // ---- Sales & POS ----
+      match /invoices/{id} {
+        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /customers/{id} {
+        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /refunds/{id} {
+        allow read, create: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+        allow update, delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /recurringInvoices/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+      }
+      match /leads/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+      }
+      match /campaigns/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+      }
+
+      // ---- Supply chain & operations ----
+      match /products/{id} {
+        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /vendors/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /purchaseOrders/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /rfqs/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /shipments/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /billsOfMaterials/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Operations');
+      }
+      match /productionOrders/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Operations');
+      }
+      match /qualityChecks/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Operations');
+      }
+      match /assets/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /itAssets/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId);
+      }
+
+      // ---- Projects & service ----
+      match /projects/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Operations');
+      }
+      match /tasks/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Operations');
+      }
+      match /tickets/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId);
+      }
+
+      // ---- System ----
+      match /stores/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if (isTenantAdmin(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+      }
+      // Physical stock-keeping locations — admin-managed like stores.
+      match /warehouses/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if (isTenantAdmin(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+      }
+      // Per-warehouse stock quantities — any staff can adjust via receiving/sales/counts.
+      match /stockLevels/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      // Lot/batch detail rows for trackingMode: 'lot' products — same access model
+      // as stockLevels, since lots are just a finer-grained stock breakdown.
+      match /lots/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      // One doc per physical unit for trackingMode: 'serial' products.
+      match /serialUnits/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /activityLogs/{id} {
+        allow read: if (isManager(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+        allow create: if isStaff(tenantId) && tenantActive(tenantId);
+        allow update, delete: if false; // audit trail is immutable
+      }
+      match /notifications/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId);
+      }
+      match /presence/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId);
+      }
+      match /scheduledReports/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /reportDefinitions/{id} {
+        allow read, write: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      // Pre-aggregated daily/monthly report data — written only by the
+      // computeRollups scheduled Cloud Function via the Admin SDK.
+      match /reportRollups/{id} {
+        allow read: if isManager(tenantId) && tenantActive(tenantId);
+        allow write: if false;
+      }
+      match /roles/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /quotations/{id} {
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
+      }
+      match /timesheets/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow create: if isStaff(tenantId) && tenantActive(tenantId);
+        allow update, delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /expenseClaims/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow create: if isStaff(tenantId) && tenantActive(tenantId);
+        allow update, delete: if isManager(tenantId) && tenantActive(tenantId);
+      }
+      match /departments/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /workflows/{id} {
+        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /approvalWorkflows/{id} {
+        // Any staff member can be an approver on a workflow step
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId);
+      }
+      match /apiKeys/{id} {
+        // API keys are read server-side by the REST function; admins manage them
+        allow read: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /webhooks/{id} {
+        allow read, write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /counters/{id} {
+        // Atomic document-number allocation — any staff member issuing documents
+        allow read, write: if isStaff(tenantId) && tenantActive(tenantId);
+      }
+      match /auditTrail/{id} {
+        allow read: if (isManager(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+        allow write: if false; // server-written only (Cloud Function)
+      }
+    }
+
+    // Everything not matched above is denied by default.
+  }
+}

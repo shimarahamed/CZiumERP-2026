@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-NetTCPConnection -LocalPort 9002 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -Confirm:$false -ErrorAction SilentlyContinue })",
+      "Bash(rm -rf .next)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:9002/)",
+      "Bash(break)",
+      "Bash(npm test *)",
+      "Bash(npx firebase-tools *)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:9002)",
+      "Bash(curl -s http://localhost:9002)",
+      "Bash(taskkill //PID 36848 //F)",
+      "PowerShell(Get-NetTcpConnection -LocalPort 9002 -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 66000 -Force -ErrorAction SilentlyContinue)",
+      "Bash(grep -E 'key=\\\\{[a-z]$|key=\\\\{index\\\\}|key=\\\\{i\\\\}|key=\\\\{j\\\\}|key=\\\\{ki\\\\}|key=\\\\{ci\\\\}')",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(echo \"Started with PID $!\")",
+      "Bash(ps aux *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:9002/settings)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:9002/vendors)",
+      "Bash(wc -l src/context/AppContext.tsx)",
+      "Bash(ls src/context)",
+      "Bash(node -e ' *)",
+      "Bash(echo \"=== main tsc exit: $? ===\")",
+      "Bash(echo \"=== functions tsc exit: $? ===\")",
+      "Read(//c/Users/shima/Downloads/**)"
+    ]
+  }
+}
