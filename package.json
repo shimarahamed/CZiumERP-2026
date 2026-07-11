@@ -49,7 +49,7 @@
     "jsbarcode": "^3.11.6",
     "jspdf": "^4.2.1",
     "jsqr": "^1.4.0",
-    "lucide-react": "^0.475.0",
+    "lucide-react": "^1.24.0",
     "next": "15.3.8",
     "nodemailer": "^9.0.3",
     "patch-package": "^8.0.0",
