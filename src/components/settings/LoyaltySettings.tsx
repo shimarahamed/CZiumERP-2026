@@ -70,7 +70,7 @@ export default function LoyaltySettings() {
                         <div className="flex items-center gap-2">
                             <Badge className="text-base px-4 py-1 bg-gray-400">Silver</Badge>
                         </div>
-                        <div className="flex-1 grid grid-cols-2 gap-4">
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Points to Reach Tier</Label>
                                 <Input type="number" value={local.loyaltySettings?.tiers?.Silver?.points || ''} onChange={(e) => handleTierSettingChange('Silver', 'points', e.target.value)} />
@@ -85,7 +85,7 @@ export default function LoyaltySettings() {
                         <div className="flex items-center gap-2">
                             <Badge className="text-base px-4 py-1 bg-amber-500 text-white">Gold</Badge>
                         </div>
-                        <div className="flex-1 grid grid-cols-2 gap-4">
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Points to Reach Tier</Label>
                                 <Input type="number" value={local.loyaltySettings?.tiers?.Gold?.points || ''} onChange={(e) => handleTierSettingChange('Gold', 'points', e.target.value)} />

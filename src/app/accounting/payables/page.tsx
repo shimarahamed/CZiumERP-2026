@@ -18,6 +18,7 @@ import Header from "@/components/Header";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/hooks/use-toast";
 import { useAppContext } from '@/context/AppContext';
+import { formatNumber } from '@/lib/money';
 import type { ApprovalWorkflow, VendorBill, VendorBillStatus, PurchaseOrder } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { MoreHorizontal, PlusCircle, ArrowUpDown } from '@/components/icons';
@@ -29,12 +30,25 @@ import { TableSkeleton } from '@/components/TableSkeleton';
 import { sendDepartmentEmail } from '@/lib/email';
 import { buildApprovalWorkflow } from '@/lib/approvals';
 import { ApprovalWorkflowPanel } from '@/components/ApprovalWorkflowPanel';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const VENDOR_BILLS_COLUMNS: ColumnDef[] = [
+  { id: 'vendor', label: 'Vendor', locked: true },
+  { id: 'poRef', label: 'PO Ref' },
+  { id: 'amount', label: 'Amount' },
+  { id: 'dueDate', label: 'Due Date' },
+  { id: 'status', label: 'Status' },
+];
 
 const billSchema = z.object({
   purchaseOrderId: z.string().min(1, "A Purchase Order is required."),
   amount: z.coerce.number().positive("Amount must be positive."),
   billDate: z.date(),
   dueDate: z.date(),
+  discount: z.coerce.number().min(0).optional(),
+  taxRate: z.coerce.number().min(0).optional(),
+  notes: z.string().optional(),
 });
 
 type BillFormData = z.infer<typeof billSchema>;
@@ -53,6 +67,8 @@ function PayablesPageInner() {
     const [reviewingBill, setReviewingBill] = useState<VendorBill | null>(null);
     const [sortKey, setSortKey] = useState<'dueDate' | 'vendorName' | 'amount'>('dueDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const columnVisibility = useColumnVisibility('vendor-bills', VENDOR_BILLS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const workflowForBill = (bill: VendorBill) =>
         approvalWorkflows.find(w => w.entityType === 'vendor-bill' && w.entityId === bill.id && w.finalStatus === 'in-progress');
@@ -105,9 +121,12 @@ function PayablesPageInner() {
                 amount: bill.amount,
                 billDate: parseISO(bill.billDate),
                 dueDate: parseISO(bill.dueDate),
+                discount: bill.discount,
+                taxRate: bill.taxRate,
+                notes: bill.notes ?? '',
             });
         } else {
-            form.reset({ purchaseOrderId: '', amount: 0, billDate: new Date(), dueDate: new Date() });
+            form.reset({ purchaseOrderId: '', amount: 0, billDate: new Date(), dueDate: new Date(), discount: undefined, taxRate: undefined, notes: '' });
         }
         setIsFormOpen(true);
     };
@@ -134,6 +153,9 @@ function PayablesPageInner() {
             items: po.items,
             billDate: format(data.billDate, 'yyyy-MM-dd'),
             dueDate: format(data.dueDate, 'yyyy-MM-dd'),
+            discount: data.discount,
+            taxRate: data.taxRate,
+            notes: data.notes || undefined,
         };
 
         if (billToEdit) {
@@ -160,7 +182,7 @@ function PayablesPageInner() {
                     'Finance',
                     'vendor-bill-received',
                     vendor.email,
-                    { vendorName: vendor.name, amount: `${currencySymbol} ${data.amount.toFixed(2)}` },
+                    { vendorName: vendor.name, amount: `${currencySymbol} ${formatNumber(data.amount)}` },
                     user?.name ?? 'system'
                 );
             }
@@ -189,7 +211,8 @@ function PayablesPageInner() {
             <Header title="Accounts Payable" />
             <Breadcrumb items={[{ label: 'Finance', href: '/accounting' }, { label: 'Accounts Payable' }]} />
             <main className="flex-1 overflow-auto p-4 md:p-6">
-                 <div className="flex justify-end mb-4">
+                 <div className="flex justify-end items-center gap-2 mb-4">
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" onClick={() => handleOpenForm()}><PlusCircle className="mr-2 h-4 w-4" /> Enter New Bill</Button>
                 </div>
                 <Card>
@@ -199,10 +222,10 @@ function PayablesPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('vendorName')}>Vendor <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>PO Ref</TableHead>
-                                    <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('amount')}>Amount <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('dueDate')}>Due Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>Status</TableHead>
+                                    {isVisible('poRef') && <TableHead>PO Ref</TableHead>}
+                                    {isVisible('amount') && <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('amount')}>Amount <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('dueDate') && <TableHead><Button variant="ghost" onClick={() => handleSort('dueDate')}>Due Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -216,10 +239,10 @@ function PayablesPageInner() {
                                             {bill.vendorName}
                                             {bill.autoGenerated && <Badge variant="outline" className="ml-2 text-xs font-normal">Auto</Badge>}
                                         </TableCell>
-                                        <TableCell>{bill.purchaseOrderId}</TableCell>
-                                        <TableCell className="text-right">{currencySymbol}{bill.amount.toFixed(2)}</TableCell>
-                                        <TableCell>{format(parseISO(bill.dueDate), 'PPP')}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[bill.status]} className="capitalize">{bill.status}</Badge></TableCell>
+                                        {isVisible('poRef') && <TableCell>{bill.purchaseOrderId}</TableCell>}
+                                        {isVisible('amount') && <TableCell className="text-right">{currencySymbol}{formatNumber(bill.amount)}</TableCell>}
+                                        {isVisible('dueDate') && <TableCell>{format(parseISO(bill.dueDate), 'PPP')}</TableCell>}
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[bill.status]} className="capitalize">{bill.status}</Badge></TableCell>}
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal /></Button></DropdownMenuTrigger>
@@ -273,7 +296,7 @@ function PayablesPageInner() {
                                     <FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                                 )}
                             />
-                             <div className="grid grid-cols-2 gap-4">
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="billDate" render={({ field }) => (
                                     <FormItem><FormLabel>Bill Date</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                                 )}/>
@@ -281,6 +304,17 @@ function PayablesPageInner() {
                                     <FormItem><FormLabel>Due Date</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                                 )}/>
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="discount" render={({ field }) => (
+                                    <FormItem><FormLabel>Discount</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )}/>
+                                <FormField control={form.control} name="taxRate" render={({ field }) => (
+                                    <FormItem><FormLabel>Tax (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )}/>
+                            </div>
+                            <FormField control={form.control} name="notes" render={({ field }) => (
+                                <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                            )}/>
                              <DialogFooter><Button type="submit">{billToEdit ? 'Save Changes' : 'Create Bill'}</Button></DialogFooter>
                         </form>
                     </Form>

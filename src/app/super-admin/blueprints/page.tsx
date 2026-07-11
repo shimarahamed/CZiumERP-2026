@@ -15,6 +15,16 @@ import { usePlatformData } from '@/hooks/use-platform-data';
 import { ALL_MODULES, seedBlueprints, saveBlueprint, deleteBlueprint, slugify } from '@/lib/super-admin';
 import { PlusCircle, Trash2 } from '@/components/icons';
 import type { VerticalBlueprint, Module, CustomFieldSeed, CustomFieldEntity, CustomFieldType } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const BLUEPRINTS_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', locked: true },
+  { id: 'id', label: 'ID' },
+  { id: 'modules', label: 'Modules' },
+  { id: 'seedFields', label: 'Seed fields' },
+  { id: 'tenants', label: 'Tenants' },
+];
 
 const ENTITIES: CustomFieldEntity[] = ['customer', 'product', 'invoice'];
 const FIELD_TYPES: CustomFieldType[] = ['text', 'number', 'date', 'select', 'boolean'];
@@ -30,6 +40,8 @@ export default function SuperAdminBlueprintsPage() {
   const [draft, setDraft] = useState<VerticalBlueprint | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [busy, setBusy] = useState(false);
+  const columnVisibility = useColumnVisibility('blueprints', BLUEPRINTS_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const tenantCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -209,22 +221,27 @@ export default function SuperAdminBlueprintsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Blueprints</CardTitle>
-          <CardDescription>The vertical catalog offered at onboarding.</CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Blueprints</CardTitle>
+              <CardDescription>The vertical catalog offered at onboarding.</CardDescription>
+            </div>
+            <ColumnVisibilityMenu visibility={columnVisibility} />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>ID</TableHead><TableHead>Modules</TableHead><TableHead>Seed fields</TableHead><TableHead>Tenants</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead>{isVisible('id') && <TableHead>ID</TableHead>}{isVisible('modules') && <TableHead>Modules</TableHead>}{isVisible('seedFields') && <TableHead>Seed fields</TableHead>}{isVisible('tenants') && <TableHead>Tenants</TableHead>}<TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {blueprints.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No blueprints yet — click “Seed defaults”.</TableCell></TableRow>
               ) : blueprints.map(bp => (
                 <TableRow key={bp.id}>
                   <TableCell className="font-medium">{bp.name}{bp.isActive === false && <Badge variant="secondary" className="ml-2">inactive</Badge>}</TableCell>
-                  <TableCell className="font-mono text-xs">{bp.id}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{bp.modules.length}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{bp.seedFields?.length ?? 0}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{tenantCounts[bp.id] ?? 0}</TableCell>
+                  {isVisible('id') && <TableCell className="font-mono text-xs">{bp.id}</TableCell>}
+                  {isVisible('modules') && <TableCell className="text-xs text-muted-foreground">{bp.modules.length}</TableCell>}
+                  {isVisible('seedFields') && <TableCell className="text-xs text-muted-foreground">{bp.seedFields?.length ?? 0}</TableCell>}
+                  {isVisible('tenants') && <TableCell className="text-xs text-muted-foreground">{tenantCounts[bp.id] ?? 0}</TableCell>}
                   <TableCell className="text-right space-x-2">
                     <Button size="sm" variant="outline" onClick={() => startEdit(bp)}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(bp)}><Trash2 className="w-4 h-4" /></Button>

@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAppContext } from '@/context/AppContext';
 import type { LandedCostEntry, Currency } from '@/types';
+import { formatNumber } from '@/lib/money';
 
 const schema = z.object({
   duties: z.coerce.number().min(0),
@@ -61,8 +62,8 @@ export function LandedCostCalculator({ purchaseOrderId, purchaseOrderTotal, onSa
       createdAt: new Date().toISOString(),
     };
     setSaved(entry);
-    addActivityLog('Landed Cost Recorded', `Landed cost ${sym} ${total.toFixed(2)} added to PO ${purchaseOrderId}.`);
-    toast({ title: 'Landed Cost Saved', description: `Total landed cost: ${sym} ${landedTotal.toFixed(2)}` });
+    addActivityLog('Landed Cost Recorded', `Landed cost ${sym} ${formatNumber(total)} added to PO ${purchaseOrderId}.`);
+    toast({ title: 'Landed Cost Saved', description: `Total landed cost: ${sym} ${formatNumber(landedTotal)}` });
     onSave?.(entry);
   };
 
@@ -109,21 +110,21 @@ export function LandedCostCalculator({ purchaseOrderId, purchaseOrderTotal, onSa
             <div className="rounded-lg bg-muted p-3 space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">PO Total</span>
-                <span>{sym} {purchaseOrderTotal.toFixed(2)}</span>
+                <span>{sym} {formatNumber(purchaseOrderTotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Additional Costs</span>
-                <span>{sym} {total.toFixed(2)}</span>
+                <span>{sym} {formatNumber(total)}</span>
               </div>
               <div className="flex justify-between font-semibold border-t pt-1 mt-1">
                 <span>Landed Total</span>
-                <span>{sym} {landedTotal.toFixed(2)}</span>
+                <span>{sym} {formatNumber(landedTotal)}</span>
               </div>
             </div>
 
             {saved && (
               <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50">
-                Saved — {sym} {saved.total.toFixed(2)} additional costs recorded
+                Saved — {sym} {formatNumber(saved.total)} additional costs recorded
               </Badge>
             )}
 

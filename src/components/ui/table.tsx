@@ -2,18 +2,93 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-const Table = React.forwardRef<
-  HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  </div>
-))
+/** Recursively extract the plain-text content of a React node (for header labels). */
+function extractText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join("")
+  if (React.isValidElement(node)) return extractText(node.props.children)
+  return ""
+}
+
+/** Pull the column labels out of a <TableHeader> element's first row. */
+function getHeaderLabels(children: React.ReactNode): string[] {
+  let labels: string[] = []
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === TableHeader || child.type === "thead") {
+      const rows = React.Children.toArray(child.props.children)
+      const firstRow = rows.find((r) => React.isValidElement(r)) as
+        | React.ReactElement
+        | undefined
+      if (firstRow) {
+        labels = React.Children.toArray(firstRow.props.children).map((cell) =>
+          React.isValidElement(cell) ? extractText(cell.props.children).trim() : ""
+        )
+      }
+    }
+  })
+  return labels
+}
+
+/** Stamp data-label (from header text) onto each body cell so the mobile
+ * card CSS can render "Label: value" lines. Skips colSpan cells and cells
+ * that already carry an explicit data-label. */
+function labelBodyCells(children: React.ReactNode, labels: string[]): React.ReactNode {
+  if (labels.length === 0) return children
+  return React.Children.map(children, (child) => {
+    if (!React.isValidElement(child)) return child
+    if (child.type !== TableBody && child.type !== "tbody") return child
+    const body = child as React.ReactElement<{ children?: React.ReactNode }>
+    const rows = React.Children.map(body.props.children, (row) => {
+      if (!React.isValidElement(row)) return row
+      const rowEl = row as React.ReactElement<{ children?: React.ReactNode }>
+      if (!rowEl.props.children) return row
+      let cellIndex = 0
+      const cells = React.Children.map(rowEl.props.children, (cell) => {
+        if (!React.isValidElement(cell)) return cell
+        const isCell = cell.type === TableCell || cell.type === "td"
+        if (!isCell) return cell
+        const idx = cellIndex++
+        const props = cell.props as React.TdHTMLAttributes<HTMLTableCellElement> & {
+          "data-label"?: string
+        }
+        if (props.colSpan || props["data-label"] || !labels[idx]) return cell
+        return React.cloneElement(cell, { "data-label": labels[idx] } as any)
+      })
+      return React.cloneElement(row, undefined, cells)
+    })
+    return React.cloneElement(child, undefined, rows)
+  })
+}
+
+interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  /** Renders rows as stacked cards on phones (<640px). Desktop/tablet unchanged.
+   * Set to false for matrix-style tables that must stay tabular everywhere. */
+  mobileCards?: boolean
+}
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, mobileCards = true, children, ...props }, ref) => {
+    const content = mobileCards
+      ? labelBodyCells(children, getHeaderLabels(children))
+      : children
+    return (
+      <div className="relative w-full overflow-auto">
+        <table
+          ref={ref}
+          className={cn(
+            "w-full caption-bottom text-sm",
+            mobileCards && "responsive-cards",
+            className
+          )}
+          {...props}
+        >
+          {content}
+        </table>
+      </div>
+    )
+  }
+)
 Table.displayName = "Table"
 
 const TableHeader = React.forwardRef<

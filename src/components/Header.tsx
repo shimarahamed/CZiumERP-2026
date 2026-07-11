@@ -2,7 +2,7 @@
 'use client';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Search, Bell, ChevronsUpDown, ArrowLeft, MailOpen, WifiOff, X, Trash2 } from '@/components/icons';
+import { Search, Bell, ChevronsUpDown, ArrowLeft, MailOpen, WifiOff, Wifi, X, Trash2 } from '@/components/icons';
 import { Input } from './ui/input';
 import type React from 'react';
 import { useState, useEffect } from 'react';
@@ -61,12 +61,19 @@ export default function Header({ title, children, showBackButton = false }: Head
 
   const [isOnline, setIsOnline] = useState(true);
   useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
+    const manuallyOffline = () => localStorage.getItem('isOnline') === 'false';
+    const refresh = () => setIsOnline(navigator.onLine && !manuallyOffline());
+    refresh();
+    window.addEventListener('online', refresh);
+    window.addEventListener('offline', refresh);
+    window.addEventListener('storage', refresh);
+    window.addEventListener('czium:online-status', refresh);
+    return () => {
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('offline', refresh);
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('czium:online-status', refresh);
+    };
   }, []);
 
   return (
@@ -80,10 +87,10 @@ export default function Header({ title, children, showBackButton = false }: Head
         )}
         <h1 className="text-lg md:text-xl font-semibold truncate">{title}</h1>
       </div>
-      <div className="flex items-center gap-2 md:gap-4">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 min-w-0">
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="flex items-center gap-2 max-w-[150px] sm:max-w-[200px]">
+                <Button variant="outline" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 max-w-[110px] sm:max-w-[200px] shrink">
                    <span className="truncate">{currentStore?.name || "No Store Selected"}</span>
                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
                 </Button>
@@ -108,22 +115,34 @@ export default function Header({ title, children, showBackButton = false }: Head
             </DropdownMenuContent>
         </DropdownMenu>
 
-        {!isOnline && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex items-center gap-1 text-xs text-destructive font-medium">
-                  <WifiOff className="h-4 w-4" />
-                  <span className="hidden sm:inline">Offline</span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>You are offline. Changes will sync when reconnected.</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        <PresenceAvatars />
-        {children}
-        <ThemeToggle />
+        {/* Page shortcuts are secondary (all reachable via nav) — hidden on phones to keep the header from overflowing. */}
+        {children && <div className="hidden sm:flex items-center gap-2 md:gap-4">{children}</div>}
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "hidden sm:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border shrink-0",
+                  isOnline
+                    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                    : "text-destructive bg-destructive/10 border-destructive/20"
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-emerald-500" : "bg-destructive animate-pulse")} />
+                {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isOnline
+                ? 'Connected — data is syncing live.'
+                : 'You are offline. You can keep working with cached data — POS sales, invoices, and customers you add now will sync automatically once reconnected.'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <div className="hidden sm:block shrink-0"><PresenceAvatars /></div>
+        <div className="shrink-0"><ThemeToggle /></div>
         {/* Desktop search bar */}
         <button
           type="button"
@@ -132,7 +151,7 @@ export default function Header({ title, children, showBackButton = false }: Head
             const e = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true });
             document.dispatchEvent(e);
           }}
-          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border bg-background text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors w-[200px] lg:w-[280px]"
+          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border bg-background text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors w-[200px] lg:w-[280px] shrink-0"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Search…</span>
@@ -143,7 +162,7 @@ export default function Header({ title, children, showBackButton = false }: Head
           variant="ghost"
           size="icon"
           aria-label="Open search"
-          className="flex md:hidden rounded-full"
+          className="flex md:hidden rounded-full shrink-0"
           onClick={() => {
             const e = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true });
             document.dispatchEvent(e);
@@ -151,10 +170,10 @@ export default function Header({ title, children, showBackButton = false }: Head
         >
           <Search className="h-5 w-5" />
         </Button>
-        
+
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Notifications" className="rounded-full relative">
+                <Button variant="ghost" size="icon" aria-label="Notifications" className="rounded-full relative shrink-0">
                     <Bell className="h-5 w-5" />
                     {unreadCount > 0 && (
                         <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-bold text-destructive-foreground">
@@ -164,7 +183,7 @@ export default function Header({ title, children, showBackButton = false }: Head
                     <span className="sr-only">Notifications</span>
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[350px]">
+            <DropdownMenuContent align="end" className="w-[min(350px,calc(100vw-1rem))]">
                 <DropdownMenuLabel>Notifications</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                  {(notifications || []).length > 0 ? (

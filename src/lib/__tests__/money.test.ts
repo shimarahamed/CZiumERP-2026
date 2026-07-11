@@ -19,6 +19,6 @@ describe('money (integer-cents arithmetic)', () => {
     expect(percentOf(19.99, 5)).toBe(1);
   });
   it('formats with symbol', () => {
-    expect(formatMoney(1234.5, 'AED ')).toBe('AED 1234.50');
+    expect(formatMoney(1234.5, 'AED ')).toBe('AED 1,234.50');
   });
 });

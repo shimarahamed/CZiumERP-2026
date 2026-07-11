@@ -1,4 +1,6 @@
 import type { SmtpConfig, EmailDepartment, EmailTemplateConfig, EmailLog } from '@/types';
+import { app } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // ---------------- Shared branded HTML envelope ----------------
 // Every notification email (HR's onboarding/offboarding and all department templates)
@@ -390,55 +392,18 @@ export function isSmtpConfigured(smtp: SmtpConfig | undefined | null): smtp is S
 
 /** Sends an email through the server-side SMTP relay. Throws on failure. */
 export async function sendTenantEmail(
-  smtp: SmtpConfig,
-  message: { to: string; subject: string; html: string; text: string }
+  smtpOrMessage: SmtpConfig | { to: string; subject: string; html: string; text: string; attachments?: { filename: string; base64: string }[] },
+  maybeMessage?: { to: string; subject: string; html: string; text: string; attachments?: { filename: string; base64: string }[] }
 ): Promise<void> {
-  const res = await fetch('/api/email/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      smtp: {
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        username: smtp.username,
-        password: smtp.password,
-        fromName: smtp.fromName,
-        fromEmail: smtp.fromEmail,
-        replyTo: smtp.replyTo,
-        ccEmail: smtp.ccEmail,
-      },
-      ...message,
-    }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Invalid server response.' }));
-  if (!res.ok || !data.ok) {
-    throw new Error(data.error || `Email send failed (HTTP ${res.status}).`);
-  }
+  const message = (maybeMessage ?? smtpOrMessage) as { to: string; subject: string; html: string; text: string; attachments?: { filename: string; base64: string }[] };
+  const call = httpsCallable(getFunctions(app), 'sendTenantEmail');
+  await call(message);
 }
 
 /** Verifies the SMTP connection without sending an email. Throws on failure. */
 export async function verifySmtpConnection(smtp: SmtpConfig): Promise<void> {
-  const res = await fetch('/api/email/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      smtp: {
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.secure,
-        username: smtp.username,
-        password: smtp.password,
-        fromName: smtp.fromName,
-        fromEmail: smtp.fromEmail,
-      },
-      verifyOnly: true,
-    }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Invalid server response.' }));
-  if (!res.ok || !data.ok) {
-    throw new Error(data.error || `SMTP verification failed (HTTP ${res.status}).`);
-  }
+  const call = httpsCallable(getFunctions(app), 'verifyTenantSmtp');
+  await call({ smtp });
 }
 
 /**
@@ -484,12 +449,6 @@ export async function sendDepartmentEmail(
   vars: Record<string, string>,
   sentBy: string
 ): Promise<void> {
-  const smtp = ctx.smtpConfigList.find(s => s.id === 'default');
-  if (!isSmtpConfigured(smtp)) {
-    console.info(`[email] Skipped "${templateId}" — SMTP is not configured/enabled.`);
-    return;
-  }
-
   const template = ctx.emailTemplates.find(t => t.id === templateId && t.department === department);
   if (!template || !template.enabled) {
     console.info(`[email] Skipped "${templateId}" — template missing or disabled.`);
@@ -509,7 +468,7 @@ export async function sendDepartmentEmail(
   };
 
   try {
-    await sendTenantEmail(smtp, { to, subject, html, text });
+    await sendTenantEmail({ to, subject, html, text });
     ctx.setEmailLogs(prev => [{ ...logBase, status: 'sent' }, ...prev]);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error.';

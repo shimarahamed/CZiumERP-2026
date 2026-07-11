@@ -11,6 +11,7 @@ import { useRequireRole } from '@/hooks/use-require-role';
 import { interpretQuery } from '@/ai/flows/nl-query';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { availableStock } from '@/lib/analytics';
+import { formatNumber } from '@/lib/money';
 
 const SUGGESTIONS = ['Show unpaid invoices', 'Which products are low in stock?', 'Top customers', 'Recent purchase orders'];
 
@@ -32,7 +33,7 @@ function AssistantInner() {
         if (intent.filter === 'unpaid' || intent.filter === 'overdue') list = invoices.filter(i => i.status !== 'paid');
         else if (intent.filter === 'paid') list = invoices.filter(i => i.status === 'paid');
         else if (intent.filter === 'recent') list = [...invoices].sort((a, b) => +new Date(b.date) - +new Date(a.date)).slice(0, 10);
-        rows = list.slice(0, 25).map(i => `${i.id} · ${i.customerName || 'Walk-in'} · ${currencySymbol}${i.amount.toFixed(2)} · ${i.status}`);
+        rows = list.slice(0, 25).map(i => `${i.id} · ${i.customerName || 'Walk-in'} · ${currencySymbol}${formatNumber(i.amount)} · ${i.status}`);
       } else if (intent.entity === 'products') {
         let list = products;
         if (intent.filter === 'low-stock') list = products.filter(p => typeof p.reorderThreshold !== 'undefined' && availableStock(p) <= p.reorderThreshold);

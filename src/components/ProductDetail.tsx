@@ -2,21 +2,31 @@
 'use client';
 
 import React from 'react';
-import { DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import Image from 'next/image';
+import { DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Product } from '@/types';
 import { useAppContext } from '@/context/AppContext';
 import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
+import { formatNumber, discountedUnitPrice } from '@/lib/money';
+import { Package, Pencil, Copy } from '@/components/icons';
+import { PRODUCT_ICONS, resolveIconName } from '@/lib/product-icon';
 
 interface ProductDetailProps {
     product: Product;
+    /** Open the edit form for this product (hidden when the viewer can't manage inventory). */
+    onEdit?: () => void;
+    /** Open the add form prefilled from this product, saved as a new product. */
+    onDuplicate?: () => void;
 }
 
-const ProductDetail = ({ product }: ProductDetailProps) => {
-    const { currencySymbol, vendorsMap, purchaseOrders, lots, serialUnits, warehouses } = useAppContext();
+const ProductDetail = ({ product, onEdit, onDuplicate }: ProductDetailProps) => {
+    const { currencySymbol, vendorsMap, purchaseOrders, lots, serialUnits, warehouses, productsMap } = useAppContext();
     const vendor = product.vendorId ? vendorsMap.get(product.vendorId) : undefined;
     const productPurchaseHistory = purchaseOrders.filter(po =>
         po.status === 'received' && po.items.some(item => item.productId === product.id)
@@ -36,24 +46,56 @@ const ProductDetail = ({ product }: ProductDetailProps) => {
         </div>
     );
 
+    const FallbackIcon = PRODUCT_ICONS[resolveIconName(product.name, product.iconName)] ?? Package;
+    const isService = product.kind === 'service';
+
     return (
         <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-                <DialogTitle>{product.name}</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                    {product.name}
+                    {isService && <Badge variant="outline">Service</Badge>}
+                    {(product.discount ?? 0) > 0 && (
+                        <Badge variant="secondary">
+                            {product.discountType === 'amount' ? `${currencySymbol} ${formatNumber(product.discount!)} off` : `${product.discount}% off`}
+                        </Badge>
+                    )}
+                </DialogTitle>
                 <DialogDescription>{product.description || 'No description available.'}</DialogDescription>
             </DialogHeader>
-            <div className="py-4 space-y-6 max-h-[70vh] overflow-y-auto px-1">
+            <div className="py-4 space-y-6 max-h-[65vh] overflow-y-auto px-1">
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="relative h-40 w-40 shrink-0 rounded-xl border bg-muted/40 flex items-center justify-center overflow-hidden mx-auto sm:mx-0">
+                        {product.imageUrl ? (
+                            <Image src={product.imageUrl} alt={product.name} fill sizes="160px" className="object-cover" unoptimized />
+                        ) : (
+                            <FallbackIcon className="h-14 w-14 text-muted-foreground" />
+                        )}
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-4 flex-1 content-start">
+                        <DetailItem label="Price" value={`${currencySymbol} ${formatNumber(product.price)}`} />
+                        <DetailItem label="Cost" value={`${currencySymbol} ${formatNumber(product.cost)}`} />
+                        <DetailItem label="Discount" value={(product.discount ?? 0) > 0
+                            ? `${product.discountType === 'amount' ? `${currencySymbol} ${formatNumber(product.discount!)}` : `${product.discount}%`} off (final ${currencySymbol} ${formatNumber(discountedUnitPrice(product.price, product.discount, product.discountType))})`
+                            : 'None'} />
+                        <DetailItem label="Stock Quantity" value={isService ? '—' : product.stock} />
+                    </dl>
+                </div>
+                <Separator />
                 <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-6">
                     <DetailItem label="SKU" value={product.sku} />
+                    <DetailItem label="Barcode" value={product.barcode} />
                     <DetailItem label="Category" value={product.category} />
-                    <DetailItem label="Product Type" value={product.productType?.replace('-', ' ')} />
+                    <DetailItem label="Brand" value={product.brand} />
+                    <DetailItem label="Unit of Measure" value={product.unitOfMeasure} />
+                    <DetailItem label="Product Type" value={isService ? 'Service' : product.productType?.replace('-', ' ')} />
+                    <DetailItem label="Stock Tracking" value={product.trackingMode && product.trackingMode !== 'none' ? product.trackingMode : 'None'} />
+                    <DetailItem label="Bin Location" value={product.binLocation} />
                     <DetailItem label="Default Vendor" value={vendor?.name} />
-                    <DetailItem label="Price" value={`${currencySymbol} ${product.price.toFixed(2)}`} />
-                    <DetailItem label="Cost" value={`${currencySymbol} ${product.cost.toFixed(2)}`} />
-                    <DetailItem label="Stock Quantity" value={product.stock} />
                     <DetailItem label="Reorder Threshold" value={product.reorderThreshold} />
                     <DetailItem label="Expiry Date" value={product.expiryDate ? format(parseISO(product.expiryDate), 'PPP') : 'N/A'} />
                     <DetailItem label="Warranty Date" value={product.warrantyDate ? format(parseISO(product.warrantyDate), 'PPP') : 'N/A'} />
+                    <DetailItem label="Added On" value={product.createdAt ? format(parseISO(product.createdAt), 'PPP') : 'N/A'} />
                 </dl>
                 
                 {productLots.length > 0 && (
@@ -83,6 +125,40 @@ const ProductDetail = ({ product }: ProductDetailProps) => {
                                                         <TableCell className="text-right">{lot.quantity}</TableCell>
                                                     </TableRow>
                                                 ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </>
+                )}
+
+                {isService && (product.serviceLinks?.length ?? 0) > 0 && (
+                    <>
+                        <Separator />
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-medium">Linked Products</h3>
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Product</TableHead>
+                                                <TableHead>SKU</TableHead>
+                                                <TableHead className="text-right">Qty per Service</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {product.serviceLinks!.map(link => {
+                                                const linked = productsMap.get(link.productId);
+                                                return (
+                                                    <TableRow key={link.productId}>
+                                                        <TableCell>{linked?.name ?? 'Unknown product'}</TableCell>
+                                                        <TableCell>{linked?.sku ?? 'N/A'}</TableCell>
+                                                        <TableCell className="text-right">{link.quantity}</TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </CardContent>
@@ -152,7 +228,7 @@ const ProductDetail = ({ product }: ProductDetailProps) => {
                                                     <TableCell>{po.vendorName}</TableCell>
                                                     <TableCell>{po.receivedDate ? format(parseISO(po.receivedDate), 'PPP') : 'N/A'}</TableCell>
                                                     <TableCell className="text-right">{item.quantity}</TableCell>
-                                                    <TableCell className="text-right">{currencySymbol} {item.cost.toFixed(2)}</TableCell>
+                                                    <TableCell className="text-right">{currencySymbol} {formatNumber(item.cost)}</TableCell>
                                                 </TableRow>
                                             );
                                         })}
@@ -163,6 +239,20 @@ const ProductDetail = ({ product }: ProductDetailProps) => {
                     </div>
                 )}
             </div>
+            {(onEdit || onDuplicate) && (
+                <DialogFooter className="gap-2 sm:gap-0 border-t pt-4">
+                    {onDuplicate && (
+                        <Button variant="outline" onClick={onDuplicate}>
+                            <Copy className="mr-2 h-4 w-4" /> Duplicate
+                        </Button>
+                    )}
+                    {onEdit && (
+                        <Button onClick={onEdit}>
+                            <Pencil className="mr-2 h-4 w-4" /> Edit Product
+                        </Button>
+                    )}
+                </DialogFooter>
+            )}
         </DialogContent>
     );
 };

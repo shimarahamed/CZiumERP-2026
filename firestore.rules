@@ -130,33 +130,35 @@ service cloud.firestore {
       // ---- Finance: ledger append-only for managers; corrections admin-only ----
       match /ledgerEntries/{id} {
         allow read, create: if isManager(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Financial Management');
+          && moduleEnabled(tenantId, 'Finance');
         allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       match /taxRates/{id} {
+        // Read by all staff — invoices/POS apply tax rates for every role;
+        // only admins configure rates on the Tax Management page.
         allow read: if isStaff(tenantId) && tenantActive(tenantId);
         allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       // Same access model as ledgerEntries, since posting one always writes both.
       match /intercompanyTransactions/{id} {
         allow read, create: if isManager(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Financial Management');
+          && moduleEnabled(tenantId, 'Finance');
         allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       // Posted payroll periods — same access model as ledgerEntries, since posting
       // one always writes to both.
       match /payrollRuns/{id} {
         allow read, create: if isManager(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Financial Management');
+          && moduleEnabled(tenantId, 'Finance');
         allow update, delete: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       match /budgets/{id} {
         allow read, write: if isManager(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Financial Management');
+          && moduleEnabled(tenantId, 'Finance');
       }
       match /vendorBills/{id} {
         allow read, write: if isManager(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Financial Management');
+          && moduleEnabled(tenantId, 'Finance');
       }
 
       // ---- HR: salary/leave data restricted to managers ----
@@ -169,7 +171,11 @@ service cloud.firestore {
           && moduleEnabled(tenantId, 'Human Resources');
       }
       match /leaveRequests/{id} {
-        allow read, write: if isManager(tenantId) && tenantActive(tenantId)
+        // Staff submit and view their own requests; managers approve/reject/manage —
+        // same shape as timesheets/expenseClaims self-service submission below.
+        allow read, create: if isStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Human Resources');
+        allow update, delete: if isManager(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Human Resources');
       }
       match /performanceReviews/{id} {
@@ -188,7 +194,7 @@ service cloud.firestore {
       // Staff can read (to know whether a template is active before sending);
       // only admins can change SMTP credentials or edit templates.
       match /smtpConfig/{id} {
-        allow read: if isStaff(tenantId) && tenantActive(tenantId);
+        allow read: if isTenantAdmin(tenantId) && tenantActive(tenantId);
         allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       match /emailTemplates/{id} {
@@ -196,6 +202,20 @@ service cloud.firestore {
         allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       match /emailLogs/{id} {
+        allow read: if isManager(tenantId) && tenantActive(tenantId);
+        allow create: if isStaff(tenantId) && tenantActive(tenantId);
+        allow update, delete: if false; // audit trail is immutable
+      }
+      // Tenant-wide SMS gateway & WhatsApp Cloud API config — same shape as smtpConfig above.
+      match /smsConfig/{id} {
+        allow read: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /whatsappConfig/{id} {
+        allow read: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+        allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
+      }
+      match /messageLogs/{id} {
         allow read: if isManager(tenantId) && tenantActive(tenantId);
         allow create: if isStaff(tenantId) && tenantActive(tenantId);
         allow update, delete: if false; // audit trail is immutable
@@ -254,15 +274,15 @@ service cloud.firestore {
       }
       match /billsOfMaterials/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Operations');
+          && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /productionOrders/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Operations');
+          && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /qualityChecks/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Operations');
+          && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /assets/{id} {
         allow read, write: if isManager(tenantId) && tenantActive(tenantId);
@@ -274,11 +294,11 @@ service cloud.firestore {
       // ---- Projects & service ----
       match /projects/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Operations');
+          && moduleEnabled(tenantId, 'Project Management');
       }
       match /tasks/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
-          && moduleEnabled(tenantId, 'Operations');
+          && moduleEnabled(tenantId, 'Project Management');
       }
       match /tickets/{id} {
         allow read, write: if isStaff(tenantId) && tenantActive(tenantId);

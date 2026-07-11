@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Header from '@/components/Header';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,7 @@ import { Printer, Sparkles, Loader2 } from 'lucide-react';
 import { generateExecSummary, type ExecSummaryOutput } from '@/ai/flows/exec-summary';
 import { productProfitability, churnRisk } from '@/lib/analytics';
 import { useToast } from '@/hooks/use-toast';
+import { formatNumber } from '@/lib/money';
 
 type Preset = 'this-month' | 'this-quarter' | 'this-year' | 'custom';
 
@@ -37,7 +39,7 @@ const Lines = ({ lines, symbol, negative }: { lines: AccountLine[]; symbol: stri
     {lines.map(l => (
       <div key={l.account} className="flex justify-between py-1 text-sm">
         <span>{l.account}</span>
-        <span className={negative ? 'text-destructive' : ''}>{symbol} {l.amount.toFixed(2)}</span>
+        <span className={negative ? 'text-destructive' : ''}>{symbol} {formatNumber(l.amount)}</span>
       </div>
     ))}
   </>
@@ -46,7 +48,7 @@ const Lines = ({ lines, symbol, negative }: { lines: AccountLine[]; symbol: stri
 const TotalRow = ({ label, value, symbol, strong }: { label: string; value: number; symbol: string; strong?: boolean }) => (
   <div className={`flex justify-between py-1 ${strong ? 'font-bold text-base' : 'font-semibold text-sm'}`}>
     <span>{label}</span>
-    <span>{symbol} {value.toFixed(2)}</span>
+    <span>{symbol} {formatNumber(value)}</span>
   </div>
 );
 
@@ -91,6 +93,7 @@ function StatementsInner() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Financial Statements" />
+      <Breadcrumb items={[{ label: 'Finance', href: '/accounting' }, { label: 'Financial Statements' }]} />
       <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         <div className="flex flex-wrap items-end gap-3 non-printable">
           <div className="space-y-2">
@@ -168,7 +171,7 @@ function StatementsInner() {
                 <Separator className="my-3" />
                 <p className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-1">Equity</p>
                 <Lines lines={bs.equity} symbol={currencySymbol} />
-                <div className="flex justify-between py-1 text-sm"><span>Retained Earnings (period)</span><span>{currencySymbol} {bs.retainedEarnings.toFixed(2)}</span></div>
+                <div className="flex justify-between py-1 text-sm"><span>Retained Earnings (period)</span><span>{currencySymbol} {formatNumber(bs.retainedEarnings)}</span></div>
                 <TotalRow label="Total Equity" value={bs.totalEquity} symbol={currencySymbol} />
                 <Separator className="my-3" />
                 <TotalRow label="Liabilities + Equity" value={bs.totalLiabilities + bs.totalEquity} symbol={currencySymbol} strong />

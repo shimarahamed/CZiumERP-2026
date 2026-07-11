@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import Header from "@/components/Header";
 import { useToast } from "@/hooks/use-toast";
 import { useAppContext } from '@/context/AppContext';
+import { formatNumber } from '@/lib/money';
 import type { Campaign, CampaignStatus, CampaignChannel } from '@/types';
 import { MoreHorizontal, PlusCircle, ArrowUpDown } from '@/components/icons';
 import { TableSkeleton } from '@/components/TableSkeleton';
@@ -28,7 +29,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
+const CAMPAIGNS_COLUMNS: ColumnDef[] = [
+    { id: 'name', label: 'Campaign', locked: true },
+    { id: 'status', label: 'Status' },
+    { id: 'channel', label: 'Channel' },
+    { id: 'budget', label: 'Budget' },
+    { id: 'timeline', label: 'Timeline' },
+];
 
 const campaignSchema = z.object({
   name: z.string().min(1, "Campaign name is required."),
@@ -89,6 +99,8 @@ export default function CampaignsPage() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const columnVisibility = useColumnVisibility('campaigns', CAMPAIGNS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const sortedCampaigns = useMemo(() => {
         let filtered = campaigns.filter(campaign =>
@@ -234,6 +246,7 @@ export default function CampaignsPage() {
                                 </div>
                             </PopoverContent>
                         </Popover>
+                        <ColumnVisibilityMenu visibility={columnVisibility} />
                         {canManage && (
                         <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                             <PlusCircle className="h-4 w-4" /> New Campaign
@@ -247,10 +260,10 @@ export default function CampaignsPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('name')}>Campaign <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('channel')}>Channel <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('budget')}>Budget <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>
-                                    <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('startDate')}>Timeline <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>
+                                    {isVisible('status') && <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>}
+                                    {isVisible('channel') && <TableHead><Button variant="ghost" onClick={() => handleSort('channel')}>Channel <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>}
+                                    {isVisible('budget') && <TableHead><Button variant="ghost" onClick={() => handleSort('budget')}>Budget <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>}
+                                    {isVisible('timeline') && <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('startDate')}>Timeline <ArrowUpDown className="ml-2 h-4 w-4"/></Button></TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -264,10 +277,10 @@ export default function CampaignsPage() {
                                 {sortedCampaigns.map(campaign => (
                                     <TableRow key={campaign.id}>
                                         <TableCell className="font-medium">{campaign.name}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[campaign.status]} className="capitalize">{campaign.status}</Badge></TableCell>
-                                        <TableCell>{channelDisplay[campaign.channel]}</TableCell>
-                                        <TableCell>{currencySymbol}{campaign.budget.toFixed(2)}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{format(parseISO(campaign.startDate), 'MMM d, yyyy')} - {format(parseISO(campaign.endDate), 'MMM d, yyyy')}</TableCell>
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[campaign.status]} className="capitalize">{campaign.status}</Badge></TableCell>}
+                                        {isVisible('channel') && <TableCell>{channelDisplay[campaign.channel]}</TableCell>}
+                                        {isVisible('budget') && <TableCell>{currencySymbol}{formatNumber(campaign.budget)}</TableCell>}
+                                        {isVisible('timeline') && <TableCell className="hidden md:table-cell">{format(parseISO(campaign.startDate), 'MMM d, yyyy')} - {format(parseISO(campaign.endDate), 'MMM d, yyyy')}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>

@@ -39,7 +39,7 @@ function FullScreenLoader() {
 }
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, currentStore, isHydrated, isStoreResolving, themeSettings, isSuperAdmin, user } = useAppContext();
+  const { isAuthenticated, currentStore, isHydrated, isStoreResolving, themeSettings, isSuperAdmin, user, companyName } = useAppContext();
   const router = useRouter();
   const pathname = usePathname();
   const isNavigating = useNavigationLoading(80);
@@ -116,14 +116,14 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
         <Sidebar collapsible="icon">
           <div className="flex flex-col h-full">
             <SidebarHeader className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-primary/20 rounded-lg flex items-center justify-center h-10 w-10 shrink-0">
+              <div className="p-2 bg-primary/20 rounded-lg flex items-center justify-center h-10 w-10 shrink-0 overflow-hidden">
                 {themeSettings.logoUrl ? (
-                  <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={24} height={24} className="object-contain" />
+                  <Image src={themeSettings.logoUrl} alt={companyName} width={24} height={24} className="object-contain rounded-md" />
                 ) : (
                   <Store className="w-6 h-6 text-primary" />
                 )}
               </div>
-              <h1 className="text-xl font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden truncate">{themeSettings.appName}</h1>
+              <h1 className="text-xl font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden truncate">{companyName}</h1>
             </SidebarHeader>
             <SidebarContent>
               <Nav />

@@ -55,8 +55,10 @@ export default function ModulesSettings() {
             await saveThemeSettings({ disabledModules: local.disabledModules });
             addActivityLog('Settings Updated', 'Module settings were updated.');
             toast({ title: 'Modules Saved', description: 'Your changes have been saved.' });
-        } catch {
-            toast({ variant: 'destructive', title: 'Save Failed', description: 'Could not save your changes. Please try again.' });
+        } catch (err) {
+            console.error('Failed to save Module settings:', err);
+            const description = err instanceof Error ? err.message : 'Could not save your changes. Please try again.';
+            toast({ variant: 'destructive', title: 'Save Failed', description });
         } finally {
             setIsSaving(false);
         }

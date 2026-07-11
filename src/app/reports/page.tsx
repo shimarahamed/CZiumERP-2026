@@ -18,12 +18,23 @@ import { subDays } from 'date-fns/subDays';
 import { isWithinInterval } from 'date-fns/isWithinInterval';
 import { parseISO } from 'date-fns/parseISO';
 import { format } from 'date-fns/format';
+import { formatNumber, lineTotal } from '@/lib/money';
 import type { Invoice, Product } from '@/types';
 import { getSalesForecast } from '@/ai/flows/sales-forecast';
 import type { SalesForecastOutput } from '@/ai/flows/sales-forecast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const INVENTORY_DETAILS_COLUMNS: ColumnDef[] = [
+    { id: 'name', label: 'Product', locked: true },
+    { id: 'sku', label: 'SKU' },
+    { id: 'stock', label: 'Stock' },
+    { id: 'cost', label: 'Cost' },
+    { id: 'totalValue', label: 'Total Value' },
+];
 
 
 const ReportKPI = ({ title, value, icon: Icon }: { title: string, value: string, icon: React.ElementType }) => (
@@ -59,6 +70,8 @@ export default function ReportsPage() {
     const [forecast, setForecast] = useState<SalesForecastOutput | null>(null);
     const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'sales');
+    const inventoryColumnVisibility = useColumnVisibility('reportsInventoryDetails', INVENTORY_DETAILS_COLUMNS);
+    const { isVisible: isInventoryColVisible } = inventoryColumnVisibility;
 
     // Sync tab to URL
     const handleTabChange = (tab: string) => {
@@ -151,7 +164,7 @@ export default function ReportsPage() {
                     productSales[item.productId] = { name: item.productName, quantity: 0, revenue: 0 };
                 }
                 productSales[item.productId].quantity += item.quantity;
-                productSales[item.productId].revenue += item.price * item.quantity;
+                productSales[item.productId].revenue += lineTotal(item.price, item.quantity, item.discount, item.discountType);
             });
         });
 
@@ -234,7 +247,7 @@ export default function ReportsPage() {
     ) : (
          <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <ReportKPI title="Total Revenue" value={`${currencySymbol} ${salesReportData.totalRevenue.toFixed(2)}`} icon={DollarSign} />
+                <ReportKPI title="Total Revenue" value={`${currencySymbol} ${formatNumber(salesReportData.totalRevenue)}`} icon={DollarSign} />
                 <ReportKPI title="Invoices" value={`${salesReportData.totalInvoices}`} icon={FileText} />
                 <ReportKPI title="Items Sold" value={`${salesReportData.totalItemsSold}`} icon={ShoppingBag} />
                 <ReportKPI title="Customers" value={`${salesReportData.uniqueCustomers}`} icon={Users} />
@@ -242,11 +255,11 @@ export default function ReportsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card><CardHeader><CardTitle>Sales by Product</CardTitle></CardHeader><CardContent>
                     <Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Revenue</TableHead></TableRow></TableHeader>
-                    <TableBody>{salesReportData.productSales.map(p => (<TableRow key={p.id}><TableCell>{p.name}</TableCell><TableCell className="text-right">{p.quantity}</TableCell><TableCell className="text-right">{currencySymbol} {p.revenue.toFixed(2)}</TableCell></TableRow>))}</TableBody></Table>
+                    <TableBody>{salesReportData.productSales.map(p => (<TableRow key={p.id}><TableCell>{p.name}</TableCell><TableCell className="text-right">{p.quantity}</TableCell><TableCell className="text-right">{currencySymbol} {formatNumber(p.revenue)}</TableCell></TableRow>))}</TableBody></Table>
                 </CardContent></Card>
                 <Card><CardHeader><CardTitle>Sales by User</CardTitle></CardHeader><CardContent>
                     <Table><TableHeader><TableRow><TableHead>User</TableHead><TableHead className="text-right">Invoices</TableHead><TableHead className="text-right">Revenue</TableHead></TableRow></TableHeader>
-                    <TableBody>{salesReportData.userSales.map(u => (<TableRow key={u.id}><TableCell>{u.name}</TableCell><TableCell className="text-right">{u.invoices}</TableCell><TableCell className="text-right">{currencySymbol} {u.revenue.toFixed(2)}</TableCell></TableRow>))}</TableBody></Table>
+                    <TableBody>{salesReportData.userSales.map(u => (<TableRow key={u.id}><TableCell>{u.name}</TableCell><TableCell className="text-right">{u.invoices}</TableCell><TableCell className="text-right">{currencySymbol} {formatNumber(u.revenue)}</TableCell></TableRow>))}</TableBody></Table>
                 </CardContent></Card>
             </div>
             <Card>
@@ -277,20 +290,25 @@ export default function ReportsPage() {
         <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <ReportKPI title="Total SKUs" value={`${inventoryReportData.totalItems}`} icon={Package} />
-                <ReportKPI title="Total Stock Value (Cost)" value={`${currencySymbol} ${inventoryReportData.totalStockValue.toFixed(2)}`} icon={DollarSign} />
+                <ReportKPI title="Total Stock Value (Cost)" value={`${currencySymbol} ${formatNumber(inventoryReportData.totalStockValue)}`} icon={DollarSign} />
                 <ReportKPI title="Low Stock Items" value={`${inventoryReportData.lowStockItems.length}`} icon={TrendingUp} />
             </div>
             <Card>
-                <CardHeader><CardTitle>Inventory Details</CardTitle></CardHeader>
+                <CardHeader>
+                    <div className="flex items-center justify-between gap-4">
+                        <CardTitle>Inventory Details</CardTitle>
+                        <ColumnVisibilityMenu visibility={inventoryColumnVisibility} />
+                    </div>
+                </CardHeader>
                 <CardContent>
-                    <Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead>SKU</TableHead><TableHead className="text-right">Stock</TableHead><TableHead className="text-right">Cost</TableHead><TableHead className="text-right">Total Value</TableHead></TableRow></TableHeader>
+                    <Table><TableHeader><TableRow><TableHead>Product</TableHead>{isInventoryColVisible('sku') && <TableHead>SKU</TableHead>}{isInventoryColVisible('stock') && <TableHead className="text-right">Stock</TableHead>}{isInventoryColVisible('cost') && <TableHead className="text-right">Cost</TableHead>}{isInventoryColVisible('totalValue') && <TableHead className="text-right">Total Value</TableHead>}</TableRow></TableHeader>
                     <TableBody>{inventoryReportData.allItems.map(p => (
                         <TableRow key={p.id}>
                             <TableCell>{p.name}</TableCell>
-                            <TableCell>{p.sku || 'N/A'}</TableCell>
-                            <TableCell className="text-right">{p.stock}</TableCell>
-                            <TableCell className="text-right">{currencySymbol} {p.cost.toFixed(2)}</TableCell>
-                            <TableCell className="text-right">{currencySymbol} {(p.stock * p.cost).toFixed(2)}</TableCell>
+                            {isInventoryColVisible('sku') && <TableCell>{p.sku || 'N/A'}</TableCell>}
+                            {isInventoryColVisible('stock') && <TableCell className="text-right">{p.stock}</TableCell>}
+                            {isInventoryColVisible('cost') && <TableCell className="text-right">{currencySymbol} {formatNumber(p.cost)}</TableCell>}
+                            {isInventoryColVisible('totalValue') && <TableCell className="text-right">{currencySymbol} {formatNumber(p.stock * p.cost)}</TableCell>}
                         </TableRow>
                     ))}</TableBody></Table>
                 </CardContent>
@@ -306,18 +324,18 @@ export default function ReportsPage() {
                     <div className="max-w-md mx-auto space-y-4">
                         <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                             <span className="font-medium">Total Revenue</span>
-                            <span className="font-bold text-lg">{currencySymbol} {financialReportData.totalRevenue.toFixed(2)}</span>
+                            <span className="font-bold text-lg">{currencySymbol} {formatNumber(financialReportData.totalRevenue)}</span>
                         </div>
                          <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                             <span className="font-medium text-destructive">Cost of Goods Sold (COGS)</span>
-                            <span className="font-bold text-lg text-destructive">-{currencySymbol} {financialReportData.costOfGoodsSold.toFixed(2)}</span>
+                            <span className="font-bold text-lg text-destructive">-{currencySymbol} {formatNumber(financialReportData.costOfGoodsSold)}</span>
                         </div>
                         <div className="flex justify-between items-center p-4 bg-primary/10 rounded-lg border border-primary/20">
                             <span className="font-semibold text-primary">Gross Profit</span>
-                            <span className="font-bold text-xl text-primary">{currencySymbol} {financialReportData.grossProfit.toFixed(2)}</span>
+                            <span className="font-bold text-xl text-primary">{currencySymbol} {formatNumber(financialReportData.grossProfit)}</span>
                         </div>
                         <div className="text-center pt-2">
-                            <p className="text-sm text-muted-foreground">Profit Margin: <span className="font-bold">{financialReportData.profitMargin.toFixed(2)}%</span></p>
+                            <p className="text-sm text-muted-foreground">Profit Margin: <span className="font-bold">{formatNumber(financialReportData.profitMargin)}%</span></p>
                         </div>
                     </div>
                 </CardContent>

@@ -14,6 +14,9 @@ export type User = {
   role: Role;
   customRoleId?: string; // optional pointer to a tenant-defined roles/{id} doc that refines this user's permissions beyond the base role
   dashboardSettings?: DashboardSettings;
+  /** Per-table column visibility, keyed by a stable table id (e.g. 'customers', 'inventory').
+   *  Each value is the list of column ids to HIDE for that table — absent/unknown ids are shown. */
+  columnPreferences?: Record<string, string[]>;
   /** Store this user is scoped to. Required for non-admin/manager roles so they
    *  land directly in their store on login instead of being asked to pick one. */
   storeId?: string;
@@ -225,6 +228,51 @@ export type EmailLog = {
   sentBy: string;             // user name, or 'system' for automated sends
 };
 
+// ---------------- Tenant-wide SMS & WhatsApp: gateway config & log ----------------
+
+// One doc per tenant, id: 'default' — generic HTTP SMS gateway (aggregator-agnostic).
+export type SmsConfig = {
+  id: string;                // always 'default'
+  enabled: boolean;          // master switch — no SMS sent anywhere while off
+  /** 'generic' posts {to,message,sender} with a Bearer token to gatewayUrl.
+   *  'textbee' calls TextBee's Android-gateway API (https://api.textbee.dev) —
+   *  a different auth header, URL shape, and body — via the deviceId below. */
+  provider?: 'generic' | 'textbee';
+  gatewayUrl: string;        // POST endpoint of the SMS gateway/aggregator (generic provider only)
+  apiKey: string;
+  senderId: string;          // sender name/number shown to the recipient (generic provider only)
+  /** TextBee device ID — required when provider is 'textbee'. */
+  deviceId?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+// One doc per tenant, id: 'default' — Meta WhatsApp Business Cloud API.
+export type WhatsappConfig = {
+  id: string;                 // always 'default'
+  enabled: boolean;           // master switch — no WhatsApp message sent anywhere while off
+  phoneNumberId: string;      // Meta "Phone number ID"
+  accessToken: string;        // Meta permanent/system-user access token
+  businessAccountId?: string; // Meta WABA ID (optional, for reference)
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+export type MessageChannel = 'sms' | 'whatsapp';
+
+export type MessageLog = {
+  id: string;
+  channel: MessageChannel;
+  department: EmailDepartment;
+  templateId: string;
+  to: string;                 // phone number (E.164 preferred)
+  preview: string;            // first ~120 chars of the message body, for the log table
+  status: 'sent' | 'failed';
+  error?: string;
+  sentAt: string;              // ISO timestamp
+  sentBy: string;               // user name, or 'system' for automated sends
+};
+
 export type Store = {
   id: string;
   name: string;
@@ -308,8 +356,8 @@ export type Customer = {
   id: string;
   name: string;
   company?: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   avatar: string;
   billingAddress?: string;
   shippingAddress?: string;
@@ -321,6 +369,11 @@ export type Customer = {
   enrichedData?: EnrichedData;
   creditLimit?: number;      // Sales blocked when outstanding exceeds this
   deletedAt?: string;        // Soft delete
+  customerCode?: string;
+  taxVatNumber?: string;
+  paymentTerms?: string;     // free text, e.g. "Net 30"
+  salesperson?: string;
+  notes?: string;
 };
 
 export type Vendor = {
@@ -334,6 +387,13 @@ export type Vendor = {
   storeId?: string;
   scorecard?: { onTimeRate?: number; qualityRate?: number; ratedAt?: string };
   deletedAt?: string;
+  vendorCode?: string;
+  taxVatNumber?: string;
+  address?: string;
+  paymentTerms?: string;     // free text, e.g. "Net 30"; distinct from paymentTermsDays used for AP due-date math
+  currency?: string;         // preferred currency label, e.g. "USD" — not the strict transactional Currency enum
+  creditLimit?: number;
+  notes?: string;
 };
 
 /** A product a service consumes when performed: `quantity` units per single use. */
@@ -353,6 +413,13 @@ export type Product = {
   price: number;
   cost: number;
   stock: number;
+  /** Default discount applied to this product's line when sold: a % of the
+   *  unit price (discountType 'percent', 0–100) or a fixed amount off each
+   *  unit (discountType 'amount'). */
+  discount?: number;
+  discountType?: 'percent' | 'amount';
+  /** ISO timestamp of when the product was added to inventory. */
+  createdAt?: string;
   /** Optional product photo/thumbnail (data URI or URL) shown on POS cards. */
   imageUrl?: string;
   /** Optional named icon (lucide) assigned in Inventory; falls back to a
@@ -376,6 +443,9 @@ export type Product = {
   serialNumbers?: string[];  // Serial tracking
   trackingMode?: TrackingMode; // 'lot' | 'serial' opt-in; absent/'none' = untracked (default)
   deletedAt?: string;
+  unitOfMeasure?: string;    // e.g. pcs, kg, box
+  barcode?: string;
+  brand?: string;
 };
 
 export type Department = {
@@ -398,6 +468,9 @@ export type Quotation = {
   storeId?: string;
   discount?: number;
   taxRate?: number;
+  paymentTerms?: string;
+  salesperson?: string;
+  notes?: string;
 };
 
 export type Timesheet = {
@@ -428,6 +501,12 @@ export type InvoiceItem = {
   quantity: number;
   price: number; // Price per item at the time of sale
   cost: number; // Cost per item at the time of sale
+  /** Per-line discount snapshotted from the product at sale time — a % of the
+   *  unit price ('percent', 0–100) or a fixed amount off each unit ('amount'). */
+  discount?: number;
+  discountType?: 'percent' | 'amount';
+  /** Unit of measure snapshotted from the product (e.g. Pcs, Ltr, Kg). */
+  unit?: string;
   /** Manually added line (e.g. a one-off fee) — has no product/stock record. */
   isCustom?: boolean;
 };
@@ -460,6 +539,30 @@ export type Invoice = {
   decidedAt?: string;
   rejectionReason?: string;
   attachments?: Attachment[];
+  /** Free-text additional details captured at sale time (e.g. POS order notes). */
+  notes?: string;
+  salesperson?: string;
+  /**
+   * Outbox posting state for POS sales. 'queued' = written locally (works
+   * offline), awaiting the postQueuedInvoice trigger; 'posted' = server
+   * assigned the final number and posted stock/ledger; 'failed' = server
+   * rejected it (see postError). Absent on invoices from other flows.
+   */
+  postStatus?: 'queued' | 'posted' | 'failed';
+  /** Client-generated reference linking the queued doc to its final invoice. */
+  clientRef?: string;
+  /**
+   * Invoice number the client expects the server to assign (next number from
+   * the locally cached list). Shown on the receipt while queued so users never
+   * see a raw internal reference; the server honors it when still free.
+   */
+  predictedId?: string;
+  /** Server-recorded reason when postStatus is 'failed'. */
+  postError?: string;
+  /** ISO timestamp of when the server posted the queued sale. */
+  postedAt?: string;
+  /** Tenant invoice prefix captured at queue time, consumed by the trigger. */
+  invoicePrefix?: string;
 };
 
 export type RecurringInvoice = {
@@ -519,6 +622,11 @@ export type PurchaseOrder = {
   decidedAt?: string;
   rejectionReason?: string;
   attachments?: Attachment[];
+  paymentTerms?: string;
+  discount?: number;
+  taxRate?: number;
+  warehouse?: string;
+  notes?: string;
 };
 
 export type VendorBillStatus = 'unpaid' | 'paid' | 'cancelled';
@@ -541,6 +649,10 @@ export type VendorBill = {
   // True when created automatically on PO receipt (src/app/purchase-orders/page.tsx)
   // rather than manually entered on the Accounts Payable page.
   autoGenerated?: boolean;
+  discount?: number;
+  taxRate?: number;
+  attachments?: Attachment[];
+  notes?: string;
 };
 
 
@@ -559,6 +671,10 @@ export type RFQ = {
   creationDate: string;
   userId?: string;
   userName?: string;
+  deliveryDate?: string;
+  paymentTerms?: string;
+  remarks?: string;
+  attachments?: Attachment[];
 };
 
 export type Sale = {
@@ -627,12 +743,18 @@ export type ThemeSettings = {
     accentColor: string;
     invoicePrefix?: string;
     /** Document templating: applies to invoices, POS receipts, and prints */
-    invoiceTemplate?: 'classic' | 'modern' | 'minimal' | 'thermal-receipt';
+    invoiceTemplate?: 'classic' | 'modern' | 'lined' | 'thermal-receipt';
     documentFooter?: string;
     showLogoOnDocuments?: boolean;
     documentAccent?: string;
     purchaseOrderPrefix?: string;
     disabledModules?: Module[];
+    /** Non-secret switch controlling whether invoice Email actions are visible. */
+    emailGatewayEnabled?: boolean;
+    /** Non-secret switch controlling whether invoice SMS actions are visible. */
+    smsGatewayEnabled?: boolean;
+    /** Non-secret switch controlling whether invoice WhatsApp actions are visible. */
+    whatsappGatewayEnabled?: boolean;
     loyaltySettings?: LoyaltySettings;
     invoiceApprovalThreshold?: number; // legacy single-step threshold — superseded by approvalRules['invoice'] when set
     approvalRules?: ApprovalRules;
@@ -648,6 +770,13 @@ export type ThemeSettings = {
     companyPhone?: string;
     companyEmail?: string;
     taxRegistrationNumber?: string;
+    /** Business registration number — printed on invoices and receipts as "Reg No". */
+    companyRegNumber?: string;
+    // Financial & regional — same reasoning as companyName above: previously
+    // localStorage-only, so it silently reset on a new device/browser/cleared
+    // storage. Now rides the tenant settings doc.
+    currency?: Currency;
+    fiscalYearStartMonth?: number;
 };
 
 export type AssetStatus = 'in-use' | 'in-storage' | 'under-maintenance' | 'retired';
@@ -1280,6 +1409,18 @@ export type CustomFieldDefinition = {
   /** Blueprint id that seeded this field, if any (vs. tenant-added). */
   seededBy?: string;
   createdAt?: string;
+  /**
+   * Auto-fill link: when the source field (by key, same entity) changes,
+   * this field's value is set to source + offset. Only meaningful for
+   * fieldType 'number'. Value stays editable afterward — this only sets
+   * the initial/suggested value.
+   */
+  linkedFrom?: {
+    /** CustomFieldDefinition.key of the source field on the same entity. */
+    sourceKey: string;
+    /** Default amount added to the source value, e.g. 5000 for "+5000 KM". */
+    offset: number;
+  };
 };
 
 /**

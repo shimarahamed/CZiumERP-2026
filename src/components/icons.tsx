@@ -93,6 +93,7 @@ import {
   UserX,
   Video,
   VideoOff,
+  Wifi,
   WifiOff,
   Wrench,
   X,
@@ -116,6 +117,9 @@ import {
   Percent,
   Camera,
   Image as ImageIcon,
+  Columns3,
+  Wallet,
+  PlugZap,
 } from 'lucide-react';
 
 export {
@@ -212,6 +216,7 @@ export {
   UserX,
   Video,
   VideoOff,
+  Wifi,
   WifiOff,
   Wrench,
   X,
@@ -235,4 +240,7 @@ export {
   Percent,
   Camera,
   ImageIcon,
+  Columns3,
+  Wallet,
+  PlugZap,
 };

@@ -29,6 +29,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { buildApprovalWorkflow } from '@/lib/approvals';
 import { ApprovalWorkflowPanel } from '@/components/ApprovalWorkflowPanel';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const MY_LEAVE_HISTORY_COLUMNS: ColumnDef[] = [
+  { id: 'dates', label: 'Dates', locked: true },
+  { id: 'reason', label: 'Reason' },
+  { id: 'status', label: 'Status' },
+  { id: 'decidedBy', label: 'Decided By' },
+];
+
+const TEAM_REQUESTS_COLUMNS: ColumnDef[] = [
+  { id: 'employee', label: 'Employee', locked: true },
+  { id: 'dates', label: 'Dates' },
+  { id: 'reason', label: 'Reason' },
+];
 
 const leaveRequestSchema = z.object({
   dateRange: z.object({
@@ -59,6 +74,10 @@ export default function LeaveRequestsPage() {
     // When a multi-step chain is configured for leave requests, approving/rejecting opens
     // this panel instead of acting instantly.
     const [reviewingRequest, setReviewingRequest] = useState<LeaveRequest | null>(null);
+    const myHistoryColumnVisibility = useColumnVisibility('leave-requests-my-history', MY_LEAVE_HISTORY_COLUMNS);
+    const { isVisible: isMyHistoryVisible } = myHistoryColumnVisibility;
+    const teamRequestsColumnVisibility = useColumnVisibility('leave-requests-team', TEAM_REQUESTS_COLUMNS);
+    const { isVisible: isTeamVisible } = teamRequestsColumnVisibility;
 
     const form = useForm<LeaveRequestFormData>({
         resolver: zodResolver(leaveRequestSchema),
@@ -208,17 +227,22 @@ export default function LeaveRequestsPage() {
                     <TabsContent value="my-requests">
                         <Card className="mt-4">
                             <CardHeader>
-                                <CardTitle>My Leave History</CardTitle>
-                                <CardDescription>A log of your past and pending leave requests.</CardDescription>
+                                <div className="flex items-start justify-between flex-wrap gap-2">
+                                    <div>
+                                        <CardTitle>My Leave History</CardTitle>
+                                        <CardDescription>A log of your past and pending leave requests.</CardDescription>
+                                    </div>
+                                    <ColumnVisibilityMenu visibility={myHistoryColumnVisibility} />
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Dates</TableHead>
-                                            <TableHead>Reason</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead>Decided By</TableHead>
+                                            {isMyHistoryVisible('reason') && <TableHead>Reason</TableHead>}
+                                            {isMyHistoryVisible('status') && <TableHead>Status</TableHead>}
+                                            {isMyHistoryVisible('decidedBy') && <TableHead>Decided By</TableHead>}
                                         </TableRow>
                                     </TableHeader>
                                     {!isDataLoaded ? (
@@ -228,30 +252,34 @@ export default function LeaveRequestsPage() {
                                         {filteredMyRequests.map(req => (
                                             <TableRow key={req.id}>
                                                 <TableCell>{format(new Date(req.startDate), 'MMM d, yyyy')} - {format(new Date(req.endDate), 'MMM d, yyyy')}</TableCell>
-                                                <TableCell className="truncate max-w-xs">{req.reason}</TableCell>
-                                                <TableCell>
-                                                    {req.status === 'rejected' && req.rejectionReason ? (
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Badge variant="destructive" className="capitalize cursor-help">{req.status}</Badge>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p className="max-w-xs">Reason: {req.rejectionReason}</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    ) : (
-                                                        <Badge variant={statusVariant[req.status]} className="capitalize">{req.status}</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">
-                                                    {req.decidedBy ? (
-                                                        <span title={req.decidedAt ? format(new Date(req.decidedAt), 'MMM d, yyyy HH:mm') : undefined}>
-                                                            {req.decidedBy}
-                                                        </span>
-                                                    ) : '—'}
-                                                </TableCell>
+                                                {isMyHistoryVisible('reason') && <TableCell className="truncate max-w-xs">{req.reason}</TableCell>}
+                                                {isMyHistoryVisible('status') && (
+                                                    <TableCell>
+                                                        {req.status === 'rejected' && req.rejectionReason ? (
+                                                            <TooltipProvider>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Badge variant="destructive" className="capitalize cursor-help">{req.status}</Badge>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p className="max-w-xs">Reason: {req.rejectionReason}</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        ) : (
+                                                            <Badge variant={statusVariant[req.status]} className="capitalize">{req.status}</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                )}
+                                                {isMyHistoryVisible('decidedBy') && (
+                                                    <TableCell className="text-sm text-muted-foreground">
+                                                        {req.decidedBy ? (
+                                                            <span title={req.decidedAt ? format(new Date(req.decidedAt), 'MMM d, yyyy HH:mm') : undefined}>
+                                                                {req.decidedBy}
+                                                            </span>
+                                                        ) : '—'}
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -264,16 +292,21 @@ export default function LeaveRequestsPage() {
                     <TabsContent value="team-requests">
                          <Card className="mt-4">
                             <CardHeader>
-                                <CardTitle>Pending Team Requests</CardTitle>
-                                <CardDescription>Review and approve/reject leave requests from your team.</CardDescription>
+                                <div className="flex items-start justify-between flex-wrap gap-2">
+                                    <div>
+                                        <CardTitle>Pending Team Requests</CardTitle>
+                                        <CardDescription>Review and approve/reject leave requests from your team.</CardDescription>
+                                    </div>
+                                    <ColumnVisibilityMenu visibility={teamRequestsColumnVisibility} />
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Employee</TableHead>
-                                            <TableHead>Dates</TableHead>
-                                            <TableHead>Reason</TableHead>
+                                            {isTeamVisible('dates') && <TableHead>Dates</TableHead>}
+                                            {isTeamVisible('reason') && <TableHead>Reason</TableHead>}
                                             <TableHead>Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -281,8 +314,8 @@ export default function LeaveRequestsPage() {
                                         {filteredTeamRequests.map(req => (
                                             <TableRow key={req.id}>
                                                 <TableCell>{req.userName}</TableCell>
-                                                <TableCell>{format(new Date(req.startDate), 'MMM d')} - {format(new Date(req.endDate), 'MMM d, yyyy')}</TableCell>
-                                                <TableCell className="truncate max-w-xs">{req.reason}</TableCell>
+                                                {isTeamVisible('dates') && <TableCell>{format(new Date(req.startDate), 'MMM d')} - {format(new Date(req.endDate), 'MMM d, yyyy')}</TableCell>}
+                                                {isTeamVisible('reason') && <TableCell className="truncate max-w-xs">{req.reason}</TableCell>}
                                                 <TableCell>
                                                     <div className="flex gap-2">
                                                         <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleApprove(req.id)}>

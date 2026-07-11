@@ -21,6 +21,17 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { CardSkeleton } from "@/components/TableSkeleton";
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+import { formatNumber } from '@/lib/money';
+
+const DASHBOARD_DRILLDOWN_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'Invoice ID', locked: true },
+    { id: 'customerName', label: 'Customer' },
+    { id: 'date', label: 'Date' },
+    { id: 'status', label: 'Status' },
+    { id: 'amount', label: 'Amount' },
+];
 
 const statusVariant: { [key in Invoice['status']]: 'default' | 'secondary' | 'destructive' | 'outline' } = {
     paid: 'default',
@@ -38,6 +49,8 @@ export default function DashboardPage() {
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
 
   const [hiddenWidgets, setHiddenWidgets] = useState(user?.dashboardSettings?.hiddenWidgets || []);
+  const drilldownColumnVisibility = useColumnVisibility('dashboardDrilldown', DASHBOARD_DRILLDOWN_COLUMNS);
+  const { isVisible: isDrilldownColVisible } = drilldownColumnVisibility;
   
   const { storeInvoices, paidInvoices, pendingInvoices } = useMemo(() => {
     const relevantInvoices = currentStore?.id === 'all' 
@@ -206,14 +219,14 @@ export default function DashboardPage() {
   };
 
   const dashboardWidgets = [
-    { id: 'totalRevenue', title: 'Total Revenue', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Revenue</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {totalRevenue.toFixed(2)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
-    { id: 'totalProfit', title: 'Total Profit', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Profit</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {totalProfit.toFixed(2)}</div><p className="text-xs text-muted-foreground">{profitMargin.toFixed(1)}% profit margin</p></CardContent></Card>)},
-    { id: 'avgSaleValue', title: 'Average Sale Value', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Average Sale Value</CardTitle><AreaChart className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {averageSaleValue.toFixed(2)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
+    { id: 'totalRevenue', title: 'Total Revenue', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Revenue</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalRevenue)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
+    { id: 'totalProfit', title: 'Total Profit', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Profit</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalProfit)}</div><p className="text-xs text-muted-foreground">{formatNumber(profitMargin, 1, 1)}% profit margin</p></CardContent></Card>)},
+    { id: 'avgSaleValue', title: 'Average Sale Value', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Average Sale Value</CardTitle><AreaChart className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(averageSaleValue)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
     { id: 'totalSales', title: 'Total Sales', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Sales</CardTitle><CreditCard className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">+{paidInvoices.length}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
     { id: 'itemsSold', title: 'Items Sold', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Items Sold</CardTitle><ShoppingBag className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{totalItemsSold}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
     { id: 'activeCustomers', title: 'Active Customers', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Customers</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">+{activeCustomers}</div><p className="text-xs text-muted-foreground">Customers with paid invoices</p></CardContent></Card>)},
-    { id: 'pendingPayments', title: 'Pending Payments', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Pending Payments</CardTitle><Hourglass className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {totalPendingAmount.toFixed(2)}</div><p className="text-xs text-muted-foreground">From {pendingInvoices.length} invoices</p></CardContent></Card>)},
-    ...(topPerformingStore ? [{ id: 'topStore', title: 'Top Performing Store', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Top Performing Store</CardTitle><Trophy className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold truncate">{topPerformingStore.name}</div><p className="text-xs text-muted-foreground">{currencySymbol} {topPerformingStore.revenue.toFixed(2)} in revenue</p></CardContent></Card>)}] : []),
+    { id: 'pendingPayments', title: 'Pending Payments', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Pending Payments</CardTitle><Hourglass className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalPendingAmount)}</div><p className="text-xs text-muted-foreground">From {pendingInvoices.length} invoices</p></CardContent></Card>)},
+    ...(topPerformingStore ? [{ id: 'topStore', title: 'Top Performing Store', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Top Performing Store</CardTitle><Trophy className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold truncate">{topPerformingStore.name}</div><p className="text-xs text-muted-foreground">{currencySymbol} {formatNumber(topPerformingStore.revenue)} in revenue</p></CardContent></Card>)}] : []),
     { id: 'salesOverview', title: 'Sales Overview Chart', Component: () => (<Card className="lg:col-span-4"><CardHeader><CardTitle>Overview</CardTitle></CardHeader><CardContent className="pl-2"><ChartContainer config={chartConfig} className="h-[300px] w-full"><BarChart data={salesData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }} onClick={handleBarClick}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} /><YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => `${currencySymbol} ${value / 1000}k`} /><ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} /><Legend content={<ChartLegendContent />} /><Bar dataKey="revenue" fill="var(--color-revenue)" radius={4} className="cursor-pointer"/></BarChart></ChartContainer></CardContent></Card>)},
     { id: 'dashboardInsights', title: 'Dashboard Insights', Component: () => (<Card className="lg:col-span-3"><CardHeader><CardTitle>Dashboard Insights</CardTitle><p className="text-sm text-muted-foreground">Key metrics and alerts for your business.</p></CardHeader><CardContent><div className="space-y-4 max-h-[250px] overflow-y-auto">{topProducts.length > 0 && (<div><h4 className="font-semibold mb-2 flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500"/>Top Selling Products</h4><div className="space-y-2 text-sm">{topProducts.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span><span className="font-medium text-muted-foreground">{item.quantity} sold</span></div>))}</div></div>)}{(topProducts.length > 0 && (lowStockItems.length > 0 || expiringItems.length > 0)) && (<div className="border-t border-dashed my-4"></div>)}{lowStockItems.length === 0 && expiringItems.length === 0 && topProducts.length === 0 ? (<div className="flex items-center justify-center h-full"><p className="text-sm text-muted-foreground text-center py-8">No insights or alerts at the moment.</p></div>) : (<>{lowStockItems.length > 0 && (<div><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertCircle className="h-4 w-4 text-destructive"/>Low Stock Items</h4><div className="space-y-2 text-sm">{lowStockItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span><div className="flex items-center gap-2"><span className="font-medium text-destructive">{item.stock} left</span>{canCreatePo && item.vendorId && (<Button asChild variant="outline" size="sm" className="h-7"><Link href={`/purchase-orders?action=new&productId=${item.id}&vendorId=${item.vendorId}`}>Reorder</Link></Button>)}</div></div>))}</div></div>)}{expiringItems.length > 0 && (<div className="pt-2"><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-yellow-500"/>Expiring Soon</h4><div className="space-y-2 text-sm">{expiringItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span>{item.expiryDate && <span className="font-medium">{format(parseISO(item.expiryDate), 'MMM d, yyyy')}</span>}</div>))}</div></div>)}</>)}</div></CardContent></Card>)},
   ];
@@ -229,13 +242,13 @@ export default function DashboardPage() {
             <Settings className="h-4 w-4" />
             Customize
         </Button>
-        <Button asChild variant="outline" size="sm" className="gap-1">
+        <Button asChild size="sm" className="gap-1">
           <Link href="/pos">
             <CreditCard className="h-4 w-4" />
             Point of Sale
           </Link>
         </Button>
-        <Button asChild size="sm" className="gap-1">
+        <Button asChild variant="outline" size="sm" className="gap-1">
           <Link href="/invoices?action=new">
             <PlusCircle className="h-4 w-4" />
             Create New Sale
@@ -267,27 +280,32 @@ export default function DashboardPage() {
               Showing all invoices recorded in {drilldownData?.month}.
             </DialogDescription>
           </DialogHeader>
+          <div className="flex justify-end">
+            <ColumnVisibilityMenu visibility={drilldownColumnVisibility} />
+          </div>
           <div className="max-h-[60vh] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Invoice ID</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  {isDrilldownColVisible('customerName') && <TableHead>Customer</TableHead>}
+                  {isDrilldownColVisible('date') && <TableHead>Date</TableHead>}
+                  {isDrilldownColVisible('status') && <TableHead>Status</TableHead>}
+                  {isDrilldownColVisible('amount') && <TableHead className="text-right">Amount</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {drilldownData?.invoices.map(invoice => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">{invoice.id}</TableCell>
-                    <TableCell>{invoice.customerName || "N/A"}</TableCell>
-                    <TableCell>{format(parseISO(invoice.date), 'yyyy-MM-dd')}</TableCell>
+                    {isDrilldownColVisible('customerName') && <TableCell>{invoice.customerName || "N/A"}</TableCell>}
+                    {isDrilldownColVisible('date') && <TableCell>{format(parseISO(invoice.date), 'yyyy-MM-dd')}</TableCell>}
+                    {isDrilldownColVisible('status') && (
                     <TableCell>
                       <Badge variant={statusVariant[invoice.status]} className="capitalize">{invoice.status.replace('-', ' ')}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">{currencySymbol} {invoice.amount.toFixed(2)}</TableCell>
+                    )}
+                    {isDrilldownColVisible('amount') && <TableCell className="text-right">{currencySymbol} {formatNumber(invoice.amount)}</TableCell>}
                   </TableRow>
                 ))}
               </TableBody>

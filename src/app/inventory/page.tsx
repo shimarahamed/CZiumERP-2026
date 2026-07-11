@@ -31,15 +31,27 @@ import { isBefore } from 'date-fns/isBefore';
 import { differenceInDays } from 'date-fns/differenceInDays';
 import { parseISO } from 'date-fns/parseISO';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import ProductDetail from '@/components/ProductDetail';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload } from '@/components/icons';
+import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, CreditCard } from '@/components/icons';
 import { PRODUCT_ICONS, resolveIconName } from '@/lib/product-icon';
+import { formatNumber, discountedUnitPrice } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { useFirestoreQuery } from '@/hooks/use-firestore-query';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, type Query } from 'firebase/firestore';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const INVENTORY_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Product Name', locked: true },
+  { id: 'type', label: 'Type' },
+  { id: 'stock', label: 'Stock' },
+  { id: 'status', label: 'Status' },
+  { id: 'price', label: 'Price' },
+];
 
 const serviceLinkSchema = z.object({
   productId: z.string().min(1, "Select a product."),
@@ -51,10 +63,15 @@ const productSchema = z.object({
   kind: z.enum(['product', 'service']).default('product'),
   price: z.coerce.number().positive("Price must be a positive number."),
   cost: z.coerce.number().min(0, "Cost must be a non-negative number."),
+  discount: z.coerce.number().min(0, "Discount cannot be negative.").optional(),
+  discountType: z.enum(['percent', 'amount']).default('percent'),
   stock: z.coerce.number().int().min(0, "Stock cannot be negative."),
   sku: z.string().optional(),
   category: z.string().optional(),
   description: z.string().optional(),
+  unitOfMeasure: z.string().optional(),
+  barcode: z.string().optional(),
+  brand: z.string().optional(),
   vendorId: z.string().optional(),
   reorderThreshold: z.coerce.number().int().min(0, "Reorder threshold must be non-negative.").optional(),
   expiryDate: z.date().optional().nullable(),
@@ -62,6 +79,10 @@ const productSchema = z.object({
   productType: z.enum(['standard', 'manufactured', 'component']).default('standard'),
   trackingMode: z.enum(['none', 'lot', 'serial']).default('none'),
   serviceLinks: z.array(serviceLinkSchema).default([]),
+}).refine(d => d.discountType !== 'percent' || (d.discount ?? 0) <= 100, {
+  message: "Percentage discount cannot exceed 100%.", path: ['discount'],
+}).refine(d => d.discountType !== 'amount' || (d.discount ?? 0) <= d.price, {
+  message: "Discount cannot exceed the price.", path: ['discount'],
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -71,6 +92,9 @@ const productTypeVariant: { [key in Product['productType'] & string]: 'default' 
     manufactured: 'default',
     component: 'outline'
 };
+
+/** Common units of measure offered in the product form; shown on invoice/receipt lines. */
+const COMMON_UNITS = ['Pcs', 'Kg', 'g', 'Ltr', 'ml', 'Box', 'Pack', 'Dozen', 'Pair', 'Set', 'm', 'cm', 'Roll', 'Bag', 'Bottle', 'Can', 'Carton', 'Hour'];
 
 
 export default function InventoryPage() {
@@ -91,6 +115,8 @@ export default function InventoryPage() {
     const debouncedSearch = useDebounce(searchTerm, 250);
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 20;
+    const columnVisibility = useColumnVisibility('inventory', INVENTORY_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<ProductFormData>({
         resolver: zodResolver(productSchema),
@@ -99,10 +125,15 @@ export default function InventoryPage() {
             kind: 'product',
             price: 0,
             cost: 0,
+            discount: 0,
+            discountType: 'percent',
             stock: 0,
             sku: '',
             category: '',
             description: '',
+            unitOfMeasure: 'Pcs',
+            barcode: '',
+            brand: '',
             vendorId: 'none',
             reorderThreshold: 0,
             expiryDate: null,
@@ -116,12 +147,17 @@ export default function InventoryPage() {
     const { fields: serviceLinkFields, append: appendServiceLink, remove: removeServiceLink } =
         useFieldArray({ control: form.control, name: 'serviceLinks' });
     const watchedKind = useWatch({ control: form.control, name: 'kind' });
+    const watchedPrice = useWatch({ control: form.control, name: 'price' });
+    const watchedDiscount = useWatch({ control: form.control, name: 'discount' });
+    const watchedDiscountType = useWatch({ control: form.control, name: 'discountType' });
     
-    // Note: default permission tables grant inventory-staff Supply Chain 'edit' too, which
-    // would change today's behavior (only admin/manager can manage products here). Kept as
-    // a direct role check to preserve exact current behavior; a tenant admin can still grant
-    // a custom role this capability via Settings → Roles if desired.
-    const canManage = user?.role === 'admin' || user?.role === 'manager';
+    // Full Supply Chain access — admin, manager, and cashier (cashiers need to manage
+    // stock directly, e.g. urgent restocking) — matching the 'Supply Chain' module grant
+    // in rbac.ts. A tenant admin can further customize this via Settings → Roles.
+    const canManage = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier';
+    // Delete is admin/manager only in firestore.rules (products delete: isManager) —
+    // gate the UI to match so cashiers don't see a Delete action that silently fails.
+    const canDelete = user?.role === 'admin' || user?.role === 'manager';
 
     const productsQuery = useMemo(() => {
         if (!tenantId) return null;
@@ -129,6 +165,11 @@ export default function InventoryPage() {
     }, [tenantId]);
 
     const { data: serverProducts } = useFirestoreQuery<Product>(productsQuery);
+
+    const vendorOptions = useMemo(() => [
+        { label: 'None', value: 'none' },
+        ...vendors.map(v => ({ label: v.name, value: v.id })),
+    ], [vendors]);
 
     const filteredProducts = useMemo(() => {
         if (!debouncedSearch) return serverProducts;
@@ -159,15 +200,23 @@ export default function InventoryPage() {
         setRestockQty('');
     };
 
-    const handleOpenForm = (product: Product | null = null) => {
-        setProductToEdit(product);
+    // `duplicate: true` prefills the form from an existing product but saves as a NEW one.
+    const handleOpenForm = (product: Product | null = null, { duplicate = false } = {}) => {
+        setProductToEdit(duplicate ? null : product);
         setCustomData(product?.customData ?? {});
         setImageUrl(product?.imageUrl);
         setIconName(product?.iconName);
         if (product) {
             form.reset({
               ...product,
+              name: duplicate ? `${product.name} (Copy)` : product.name,
+              // A copy is a distinct item — don't carry over the unique identifiers.
+              sku: duplicate ? '' : (product.sku ?? ''),
+              barcode: duplicate ? '' : (product.barcode ?? ''),
               kind: product.kind ?? 'product',
+              discount: product.discount ?? 0,
+              discountType: product.discountType ?? 'percent',
+              unitOfMeasure: product.unitOfMeasure ?? 'Pcs',
               vendorId: product.vendorId ?? 'none',
               reorderThreshold: product.reorderThreshold ?? 0,
               expiryDate: product.expiryDate ? new Date(product.expiryDate) : null,
@@ -177,7 +226,7 @@ export default function InventoryPage() {
               serviceLinks: product.serviceLinks ?? [],
             });
         } else {
-            form.reset({ name: '', kind: 'product', price: 0, cost: 0, stock: 0, sku: '', category: '', description: '', vendorId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
+            form.reset({ name: '', kind: 'product', price: 0, cost: 0, discount: 0, discountType: 'percent', stock: 0, sku: '', category: '', description: '', unitOfMeasure: 'Pcs', barcode: '', brand: '', vendorId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
         }
         setIsFormOpen(true);
     };
@@ -208,6 +257,7 @@ export default function InventoryPage() {
         const productData = {
           ...data,
           vendorId: data.vendorId === 'none' ? undefined : data.vendorId,
+          unitOfMeasure: data.unitOfMeasure === 'none' ? undefined : data.unitOfMeasure,
           expiryDate: data.expiryDate ? data.expiryDate.toISOString() : undefined,
           warrantyDate: data.warrantyDate ? data.warrantyDate.toISOString() : undefined,
           reorderThreshold: data.reorderThreshold,
@@ -227,6 +277,7 @@ export default function InventoryPage() {
         } else {
             const newProduct: Product = {
                 id: `prod-${Date.now()}`,
+                createdAt: new Date().toISOString(),
                 ...productData,
             };
             setProducts([newProduct, ...products]);
@@ -297,6 +348,13 @@ export default function InventoryPage() {
                                         { key: 'reorderThreshold' as const, label: 'Reorder Threshold' },
                                     ]}
                                 />
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
+                                <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
+                                    <Link href="/pos">
+                                        <CreditCard className="h-4 w-4" />
+                                        Point of Sale
+                                    </Link>
+                                </Button>
                                 {canManage && (
                                     <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
                                         <Link href="/settings/import">
@@ -319,10 +377,10 @@ export default function InventoryPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Product Name</TableHead>
-                                    <TableHead className="hidden md:table-cell">Type</TableHead>
-                                    <TableHead>Stock</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="hidden md:table-cell">Price</TableHead>
+                                    {isVisible('type') && <TableHead className="hidden md:table-cell">Type</TableHead>}
+                                    {isVisible('stock') && <TableHead>Stock</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
+                                    {isVisible('price') && <TableHead className="hidden md:table-cell">Price</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -342,31 +400,35 @@ export default function InventoryPage() {
                                                     {product.name}
                                                 </div>
                                                 <div className="text-sm text-muted-foreground md:hidden">
-                                                    {currencySymbol} {product.price.toFixed(2)}
+                                                    {currencySymbol} {formatNumber(product.price)}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="hidden md:table-cell">
-                                                {product.kind === 'service' ? (
-                                                    <Badge variant="outline" className="capitalize">Service</Badge>
-                                                ) : (
-                                                    <Badge variant={productTypeVariant[product.productType || 'standard']} className="capitalize">
-                                                        {product.productType || 'Standard'}
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>{product.kind === 'service' ? <span className="text-muted-foreground">—</span> : product.stock}</TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {statuses.length > 0 ? (
-                                                        statuses.map(status => (
-                                                            <Badge key={status.text} variant={status.variant} className="whitespace-nowrap">{status.text}</Badge>
-                                                        ))
+                                            {isVisible('type') && (
+                                                <TableCell className="hidden md:table-cell">
+                                                    {product.kind === 'service' ? (
+                                                        <Badge variant="outline" className="capitalize">Service</Badge>
                                                     ) : (
-                                                        <span className="text-muted-foreground">-</span>
+                                                        <Badge variant={productTypeVariant[product.productType || 'standard']} className="capitalize">
+                                                            {product.productType || 'Standard'}
+                                                        </Badge>
                                                     )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="hidden md:table-cell">{currencySymbol} {product.price.toFixed(2)}</TableCell>
+                                                </TableCell>
+                                            )}
+                                            {isVisible('stock') && <TableCell>{product.kind === 'service' ? <span className="text-muted-foreground">—</span> : product.stock}</TableCell>}
+                                            {isVisible('status') && (
+                                                <TableCell>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {statuses.length > 0 ? (
+                                                            statuses.map(status => (
+                                                                <Badge key={status.text} variant={status.variant} className="whitespace-nowrap">{status.text}</Badge>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-muted-foreground">-</span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            )}
+                                            {isVisible('price') && <TableCell className="hidden md:table-cell">{currencySymbol} {formatNumber(product.price)}</TableCell>}
                                             <TableCell>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -379,10 +441,13 @@ export default function InventoryPage() {
                                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                         <DropdownMenuItem onClick={() => setProductToView(product)}>View Details</DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => handleOpenForm(product)}>Edit</DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleOpenForm(product, { duplicate: true })}>Duplicate</DropdownMenuItem>
                                                         {product.kind !== 'service' && (
                                                             <DropdownMenuItem onClick={() => { setProductToRestock(product); setRestockQty(''); }}>Add stock</DropdownMenuItem>
                                                         )}
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => setProductToDelete(product)}>Delete</DropdownMenuItem>
+                                                        {canDelete && (
+                                                            <DropdownMenuItem className="text-destructive" onClick={() => setProductToDelete(product)}>Delete</DropdownMenuItem>
+                                                        )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -528,16 +593,44 @@ export default function InventoryPage() {
                                 <FormField control={form.control} name="category" render={({ field }) => (
                                     <FormItem><FormLabel>Category</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
+                                <FormField control={form.control} name="unitOfMeasure" render={({ field }) => (
+                                    <FormItem><FormLabel>Unit of Measure</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value || 'none'}>
+                                            <FormControl><SelectTrigger><SelectValue placeholder="Select a unit" /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="none">None</SelectItem>
+                                                {/* keep a legacy free-text unit selectable so editing doesn't lose it */}
+                                                {field.value && field.value !== 'none' && !COMMON_UNITS.includes(field.value) && (
+                                                    <SelectItem value={field.value}>{field.value}</SelectItem>
+                                                )}
+                                                {COMMON_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">Shown next to quantities on invoices &amp; receipts.</p>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                <FormField control={form.control} name="barcode" render={({ field }) => (
+                                    <FormItem><FormLabel>Barcode</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="brand" render={({ field }) => (
+                                    <FormItem><FormLabel>Brand</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
                             </div>
                              <FormField control={form.control} name="vendorId" render={({ field }) => (
-                                <FormItem><FormLabel>Default Vendor</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl><SelectTrigger><SelectValue placeholder="Select a vendor" /></SelectTrigger></FormControl>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select><FormMessage />
+                                <FormItem className="flex flex-col"><FormLabel>Default Vendor</FormLabel>
+                                    <FormControl>
+                                        <Combobox
+                                            options={vendorOptions}
+                                            value={field.value}
+                                            onValueChange={field.onChange}
+                                            placeholder="Select a vendor"
+                                            searchPlaceholder="Search vendors..."
+                                            emptyText="No vendor found."
+                                            className="w-full"
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
                                 </FormItem>
                             )} />
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -555,6 +648,46 @@ export default function InventoryPage() {
                                         </FormItem>
                                     )} />
                                 )}
+                            </div>
+
+                            {/* Discount — % of price or a fixed amount off, with live final-price preview */}
+                            <div className="space-y-3 rounded-lg border p-3">
+                                <div>
+                                    <Label className="text-sm font-medium">Discount</Label>
+                                    <p className="text-xs text-muted-foreground">Auto-applied to this item&apos;s line on invoices &amp; receipts.</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <FormField control={form.control} name="discountType" render={({ field }) => (
+                                        <FormItem><FormLabel>Discount Type</FormLabel>
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="percent">Percentage (%)</SelectItem>
+                                                    <SelectItem value="amount">Fixed amount ({currencySymbol})</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="discount" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>{watchedDiscountType === 'amount' ? `Amount off (${currencySymbol})` : 'Percentage off (%)'}</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" min={0} max={watchedDiscountType === 'percent' ? 100 : undefined} {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <div className="flex flex-col justify-end pb-1">
+                                        <p className="text-sm font-medium text-muted-foreground">Final price</p>
+                                        <p className="text-lg font-semibold">
+                                            {currencySymbol} {formatNumber(discountedUnitPrice(Number(watchedPrice) || 0, Number(watchedDiscount) || 0, watchedDiscountType))}
+                                        </p>
+                                        {(Number(watchedDiscount) || 0) > 0 && (
+                                            <p className="text-xs text-muted-foreground">
+                                                was {currencySymbol} {formatNumber(Number(watchedPrice) || 0)}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {watchedKind === 'service' && (
@@ -613,7 +746,13 @@ export default function InventoryPage() {
             </Dialog>
 
             <Dialog open={!!productToView} onOpenChange={(open) => !open && setProductToView(null)}>
-                {productToView && <ProductDetail product={productToView} />}
+                {productToView && (
+                    <ProductDetail
+                        product={productToView}
+                        onEdit={canManage ? () => { const p = productToView; setProductToView(null); handleOpenForm(p); } : undefined}
+                        onDuplicate={canManage ? () => { const p = productToView; setProductToView(null); handleOpenForm(p, { duplicate: true }); } : undefined}
+                    />
+                )}
             </Dialog>
 
             <AlertDialog open={!!productToDelete} onOpenChange={(open) => !open && setProductToDelete(null)}>
@@ -653,4 +792,3 @@ export default function InventoryPage() {
         </div>
     );
 }
-

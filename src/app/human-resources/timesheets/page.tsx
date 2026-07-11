@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,16 @@ import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
 import type { Timesheet } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const TIMESHEETS_COLUMNS: ColumnDef[] = [
+  { id: 'date', label: 'Date', locked: true },
+  { id: 'employee', label: 'Employee' },
+  { id: 'project', label: 'Project' },
+  { id: 'hours', label: 'Hours' },
+  { id: 'status', label: 'Status' },
+];
 
 function TimesheetsInner() {
   const { user, tenantId } = useAppContext();
@@ -19,6 +30,8 @@ function TimesheetsInner() {
   const [date, setDate] = useState('');
   const [hours, setHours] = useState('');
   const [project, setProject] = useState('');
+  const columnVisibility = useColumnVisibility('timesheets', TIMESHEETS_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const isManager = user?.role === 'admin' || user?.role === 'manager';
   const visible = isManager ? sheets : sheets.filter(s => s.employeeId === user?.id);
@@ -35,6 +48,7 @@ function TimesheetsInner() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Timesheets" />
+      <Breadcrumb items={[{ label: 'Human Resources', href: '/human-resources/dashboard' }, { label: 'Timesheets' }]} />
       <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         <Card>
           <CardHeader><CardTitle className="text-base">Log time</CardTitle></CardHeader>
@@ -46,18 +60,21 @@ function TimesheetsInner() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-base">{isManager ? 'All timesheets' : 'My timesheets'}</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">{isManager ? 'All timesheets' : 'My timesheets'}</CardTitle>
+            <ColumnVisibilityMenu visibility={columnVisibility} />
+          </CardHeader>
           <CardContent>
             {visible.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No entries yet.</p> : (
               <div className="overflow-x-auto"><Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead>{isManager && <TableHead>Employee</TableHead>}<TableHead>Project</TableHead><TableHead className="text-right">Hours</TableHead><TableHead>Status</TableHead>{isManager && <TableHead className="text-right">Action</TableHead>}</TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead>{isManager && isVisible('employee') && <TableHead>Employee</TableHead>}{isVisible('project') && <TableHead>Project</TableHead>}{isVisible('hours') && <TableHead className="text-right">Hours</TableHead>}{isVisible('status') && <TableHead>Status</TableHead>}{isManager && <TableHead className="text-right">Action</TableHead>}</TableRow></TableHeader>
                 <TableBody>{visible.map(t => (
                   <TableRow key={t.id}>
                     <TableCell>{t.date}</TableCell>
-                    {isManager && <TableCell>{t.employeeName}</TableCell>}
-                    <TableCell>{t.project || '—'}</TableCell>
-                    <TableCell className="text-right">{t.hours}</TableCell>
-                    <TableCell><Badge variant={t.approved ? 'default' : 'secondary'}>{t.approved ? 'Approved' : 'Pending'}</Badge></TableCell>
+                    {isManager && isVisible('employee') && <TableCell>{t.employeeName}</TableCell>}
+                    {isVisible('project') && <TableCell>{t.project || '—'}</TableCell>}
+                    {isVisible('hours') && <TableCell className="text-right">{t.hours}</TableCell>}
+                    {isVisible('status') && <TableCell><Badge variant={t.approved ? 'default' : 'secondary'}>{t.approved ? 'Approved' : 'Pending'}</Badge></TableCell>}
                     {isManager && <TableCell className="text-right">{!t.approved && <Button size="sm" variant="outline" onClick={() => approve(t)}>Approve</Button>}</TableCell>}
                   </TableRow>
                 ))}</TableBody>

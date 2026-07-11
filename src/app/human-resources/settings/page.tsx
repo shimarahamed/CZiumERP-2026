@@ -17,12 +17,24 @@ import { sendTenantEmail, isSmtpConfigured } from '@/lib/email';
 import { format, parseISO } from 'date-fns';
 import { Loader2, Mail, Send, Settings as SettingsIcon } from '@/components/icons';
 import Link from 'next/link';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const HR_EMAIL_LOG_COLUMNS: ColumnDef[] = [
+  { id: 'sent', label: 'Sent', locked: true },
+  { id: 'template', label: 'Template' },
+  { id: 'recipient', label: 'Recipient' },
+  { id: 'subject', label: 'Subject' },
+  { id: 'status', label: 'Status' },
+];
 
 function HrSettingsPageInner() {
   const { smtpConfigList, emailTemplates, setEmailTemplates, emailLogs, user, companyName } = useAppContext();
   const { toast } = useToast();
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testRecipient, setTestRecipient] = useState('');
+  const columnVisibility = useColumnVisibility('hr-email-log', HR_EMAIL_LOG_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const smtp = smtpConfigList.find(s => s.id === 'default');
   const onboardingTemplate = emailTemplates.find(t => t.id === 'onboarding');
@@ -133,18 +145,23 @@ function HrSettingsPageInner() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Email Log</CardTitle>
-            <CardDescription>The 50 most recent HR emails sent from this workspace.</CardDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <CardTitle>Email Log</CardTitle>
+                <CardDescription>The 50 most recent HR emails sent from this workspace.</CardDescription>
+              </div>
+              <ColumnVisibilityMenu visibility={columnVisibility} />
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Sent</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead className="hidden md:table-cell">Recipient</TableHead>
-                  <TableHead className="hidden lg:table-cell">Subject</TableHead>
-                  <TableHead>Status</TableHead>
+                  {isVisible('template') && <TableHead>Template</TableHead>}
+                  {isVisible('recipient') && <TableHead className="hidden md:table-cell">Recipient</TableHead>}
+                  {isVisible('subject') && <TableHead className="hidden lg:table-cell">Subject</TableHead>}
+                  {isVisible('status') && <TableHead>Status</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -154,14 +171,16 @@ function HrSettingsPageInner() {
                 {hrLogs.map(log => (
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap">{format(parseISO(log.sentAt), 'MMM d, yyyy HH:mm')}</TableCell>
-                    <TableCell className="capitalize">{log.templateId}</TableCell>
-                    <TableCell className="hidden md:table-cell">{log.to}</TableCell>
-                    <TableCell className="hidden lg:table-cell max-w-[280px] truncate">{log.subject}</TableCell>
+                    {isVisible('template') && <TableCell className="capitalize">{log.templateId}</TableCell>}
+                    {isVisible('recipient') && <TableCell className="hidden md:table-cell">{log.to}</TableCell>}
+                    {isVisible('subject') && <TableCell className="hidden lg:table-cell max-w-[280px] truncate">{log.subject}</TableCell>}
+                    {isVisible('status') && (
                     <TableCell>
                       <Badge variant={log.status === 'sent' ? 'default' : 'destructive'} title={log.error}>
                         {log.status === 'sent' ? 'Sent' : 'Failed'}
                       </Badge>
                     </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

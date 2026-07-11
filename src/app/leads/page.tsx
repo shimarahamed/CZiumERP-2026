@@ -8,12 +8,12 @@ import * as z from 'zod';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import Header from "@/components/Header";
 import { PageSkeleton } from '@/components/PageSkeleton';
 import { useToast } from "@/hooks/use-toast";
+import { formatNumber } from '@/lib/money';
 import { useAppContext } from '@/context/AppContext';
 import type { Lead, LeadStatus, Customer } from '@/types';
 import { MoreHorizontal, PlusCircle, Mail, Phone, Briefcase, DollarSign, ArrowUpDown, Sparkles, Loader2 } from '@/components/icons';
@@ -284,7 +284,7 @@ export default function LeadsPage() {
                                             </div>
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0 space-y-2 text-sm">
-                                            {lead.value != null && lead.value > 0 && <p className="flex items-center gap-2 text-muted-foreground"><DollarSign className="h-4 w-4" /> {currencySymbol}{lead.value.toFixed(2)}</p>}
+                                            {lead.value != null && lead.value > 0 && <p className="flex items-center gap-2 text-muted-foreground"><DollarSign className="h-4 w-4" /> {currencySymbol}{formatNumber(lead.value)}</p>}
                                             <p className="flex items-center gap-2 text-muted-foreground"><Mail className="h-4 w-4" /> {lead.email}</p>
                                             {lead.enrichedData && (
                                                 <>
@@ -319,7 +319,7 @@ export default function LeadsPage() {
                              <FormField control={form.control} name="email" render={({ field }) => (
                                 <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
                             )}/>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                <FormField control={form.control} name="phone" render={({ field }) => (
                                     <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )}/>
@@ -343,20 +343,7 @@ export default function LeadsPage() {
                                 </FormItem>
                             )}/>
                             <DialogFooter>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button type="button">Add Lead</Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={form.handleSubmit(onSubmit)}>Confirm</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
+                                <Button type="submit">Add Lead</Button>
                             </DialogFooter>
                         </form>
                     </Form>

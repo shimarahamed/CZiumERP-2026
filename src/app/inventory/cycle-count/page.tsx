@@ -14,6 +14,16 @@ import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getDefaultWarehouse, setStock, stockLevelId } from '@/lib/warehouse';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const CYCLE_COUNT_COLUMNS: ColumnDef[] = [
+  { id: 'product', label: 'Product', locked: true },
+  { id: 'bin', label: 'Bin' },
+  { id: 'system', label: 'System' },
+  { id: 'counted', label: 'Counted' },
+  { id: 'variance', label: 'Variance' },
+];
 
 function CycleCountInner() {
   const { products, setProducts, addActivityLog, warehouses, stockLevels, setStockLevels } = useAppContext();
@@ -22,6 +32,8 @@ function CycleCountInner() {
   const [search, setSearch] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const debounced = useDebounce(search, 250);
+  const columnVisibility = useColumnVisibility('cycle-count', CYCLE_COUNT_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   useEffect(() => {
     if (!warehouseId) {
@@ -90,7 +102,7 @@ function CycleCountInner() {
               <div className="space-y-1.5">
                 <Label htmlFor="cc-warehouse" className="text-xs text-muted-foreground">Warehouse</Label>
                 <Select value={warehouseId} onValueChange={(v) => { setWarehouseId(v); setCounts({}); }}>
-                  <SelectTrigger id="cc-warehouse" className="w-[220px]"><SelectValue placeholder="Select a warehouse" /></SelectTrigger>
+                  <SelectTrigger id="cc-warehouse" className="w-full sm:w-[220px]"><SelectValue placeholder="Select a warehouse" /></SelectTrigger>
                   <SelectContent>
                     {warehouses.filter(w => !w.deletedAt).map(w => (
                       <SelectItem key={w.id} value={w.id}>{w.name}{w.isDefault ? ' (Default)' : ''}</SelectItem>
@@ -100,9 +112,16 @@ function CycleCountInner() {
               </div>
               <Input placeholder="Search products…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
               <Button onClick={applyAll} disabled={!warehouseId}>Apply counts</Button>
+              <ColumnVisibilityMenu visibility={columnVisibility} />
             </div>
             <div className="overflow-x-auto"><Table>
-              <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Bin</TableHead><TableHead className="text-right">System</TableHead><TableHead className="text-right w-32">Counted</TableHead><TableHead className="text-right">Variance</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow>
+                <TableHead>Product</TableHead>
+                {isVisible('bin') && <TableHead>Bin</TableHead>}
+                {isVisible('system') && <TableHead className="text-right">System</TableHead>}
+                {isVisible('counted') && <TableHead className="text-right w-32">Counted</TableHead>}
+                {isVisible('variance') && <TableHead className="text-right">Variance</TableHead>}
+              </TableRow></TableHeader>
               <TableBody>
                 {visible.slice(0, 100).map(p => {
                   const systemStock = systemStockFor(p.id);
@@ -110,14 +129,18 @@ function CycleCountInner() {
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{p.binLocation || '—'}</TableCell>
-                      <TableCell className="text-right">{systemStock}</TableCell>
-                      <TableCell className="text-right">
-                        <Input type="number" className="h-8 text-right" value={counts[p.id] ?? ''} onChange={e => setCounts(c => ({ ...c, [p.id]: e.target.value }))} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {v === null ? '—' : v === 0 ? <span className="pill pill-success">0</span> : <span className={v > 0 ? 'pill pill-info' : 'pill pill-danger'}>{v > 0 ? '+' : ''}{v}</span>}
-                      </TableCell>
+                      {isVisible('bin') && <TableCell className="text-muted-foreground text-sm">{p.binLocation || '—'}</TableCell>}
+                      {isVisible('system') && <TableCell className="text-right">{systemStock}</TableCell>}
+                      {isVisible('counted') && (
+                        <TableCell className="text-right">
+                          <Input type="number" className="h-8 text-right" value={counts[p.id] ?? ''} onChange={e => setCounts(c => ({ ...c, [p.id]: e.target.value }))} />
+                        </TableCell>
+                      )}
+                      {isVisible('variance') && (
+                        <TableCell className="text-right">
+                          {v === null ? '—' : v === 0 ? <span className="pill pill-success">0</span> : <span className={v > 0 ? 'pill pill-info' : 'pill pill-danger'}>{v > 0 ? '+' : ''}{v}</span>}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -131,7 +154,7 @@ function CycleCountInner() {
 }
 
 export default function CycleCountPage() {
-  const isAllowed = useRequireRole(['admin', 'manager', 'inventory-staff']);
+  const isAllowed = useRequireRole(['admin', 'manager', 'inventory-staff', 'cashier']);
   if (!isAllowed) return null;
   return <CycleCountInner />;
 }

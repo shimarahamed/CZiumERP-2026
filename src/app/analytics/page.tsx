@@ -9,6 +9,16 @@ import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { customerLifetimeValue, productProfitability, churnRisk, supplierPerformance } from '@/lib/analytics';
 import { useReportRollups } from '@/hooks/use-report-rollups';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+import { formatNumber } from '@/lib/money';
+
+const REVENUE_TREND_COLUMNS: ColumnDef[] = [
+  { id: 'date', label: 'Date', locked: true },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'grossMargin', label: 'Gross Margin' },
+  { id: 'invoices', label: 'Invoices' },
+];
 
 function AnalyticsInner() {
   const { invoices, customers, vendors, currencySymbol, isDataLoaded, tenantId, currentStore } = useAppContext();
@@ -16,6 +26,8 @@ function AnalyticsInner() {
   // instead of scanning every invoice. Falls back to "no trend yet" gracefully for
   // brand-new tenants with no rolled-up history (the scheduled function runs daily).
   const { rollups, isLoading: rollupsLoading } = useReportRollups(tenantId, currentStore?.id, 30);
+  const revenueTrendColumnVisibility = useColumnVisibility('analytics-revenue-trend', REVENUE_TREND_COLUMNS);
+  const { isVisible: isRevenueTrendVisible } = revenueTrendColumnVisibility;
 
   const clv = useMemo(() => {
     const m = customerLifetimeValue(invoices);
@@ -35,7 +47,15 @@ function AnalyticsInner() {
       <Header title="Advanced Analytics" />
       <main className="flex-1 overflow-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-base">Revenue Trend (30 days)</CardTitle><CardDescription>From pre-aggregated daily rollups — doesn&apos;t rescan invoice history on every load.</CardDescription></CardHeader>
+          <CardHeader>
+            <div className="flex items-start justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle className="text-base">Revenue Trend (30 days)</CardTitle>
+                <CardDescription>From pre-aggregated daily rollups — doesn&apos;t rescan invoice history on every load.</CardDescription>
+              </div>
+              <ColumnVisibilityMenu visibility={revenueTrendColumnVisibility} />
+            </div>
+          </CardHeader>
           <CardContent>
             {rollupsLoading ? (
               <p className="text-sm text-muted-foreground py-4">Loading…</p>
@@ -43,13 +63,18 @@ function AnalyticsInner() {
               <p className="text-sm text-muted-foreground py-4">No rolled-up history yet — the daily rollup runs once a day, so this fills in over time.</p>
             ) : (
               <div className="overflow-x-auto"><Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead className="text-right">Revenue</TableHead><TableHead className="text-right">Gross Margin</TableHead><TableHead className="text-right">Invoices</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow>
+                  <TableHead>Date</TableHead>
+                  {isRevenueTrendVisible('revenue') && <TableHead className="text-right">Revenue</TableHead>}
+                  {isRevenueTrendVisible('grossMargin') && <TableHead className="text-right">Gross Margin</TableHead>}
+                  {isRevenueTrendVisible('invoices') && <TableHead className="text-right">Invoices</TableHead>}
+                </TableRow></TableHeader>
                 <TableBody>{rollups.map(r => (
                   <TableRow key={r.id}>
                     <TableCell>{r.date}</TableCell>
-                    <TableCell className="text-right font-medium">{currencySymbol} {r.revenue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{currencySymbol} {r.grossMargin.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{r.invoiceCount}</TableCell>
+                    {isRevenueTrendVisible('revenue') && <TableCell className="text-right font-medium">{currencySymbol} {formatNumber(r.revenue)}</TableCell>}
+                    {isRevenueTrendVisible('grossMargin') && <TableCell className="text-right">{currencySymbol} {formatNumber(r.grossMargin)}</TableCell>}
+                    {isRevenueTrendVisible('invoices') && <TableCell className="text-right">{r.invoiceCount}</TableCell>}
                   </TableRow>
                 ))}</TableBody>
               </Table></div>
@@ -62,7 +87,7 @@ function AnalyticsInner() {
           <CardContent>
             {clv.length === 0 ? <p className="text-sm text-muted-foreground py-4">No paid invoices yet.</p> : (
               <Table><TableHeader><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">CLV</TableHead></TableRow></TableHeader>
-                <TableBody>{clv.map(c => <TableRow key={c.id}><TableCell>{c.name}</TableCell><TableCell className="text-right font-medium">{currencySymbol} {c.value.toFixed(2)}</TableCell></TableRow>)}</TableBody>
+                <TableBody>{clv.map(c => <TableRow key={c.id}><TableCell>{c.name}</TableCell><TableCell className="text-right font-medium">{currencySymbol} {formatNumber(c.value)}</TableCell></TableRow>)}</TableBody>
               </Table>
             )}
           </CardContent>
@@ -73,7 +98,7 @@ function AnalyticsInner() {
           <CardContent>
             {profitability.length === 0 ? <p className="text-sm text-muted-foreground py-4">No sales data yet.</p> : (
               <Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead className="text-right">Units</TableHead><TableHead className="text-right">Profit</TableHead></TableRow></TableHeader>
-                <TableBody>{profitability.map(p => <TableRow key={p.productId}><TableCell>{p.productName}</TableCell><TableCell className="text-right">{p.units}</TableCell><TableCell className="text-right font-medium">{currencySymbol} {p.profit.toFixed(2)}</TableCell></TableRow>)}</TableBody>
+                <TableBody>{profitability.map(p => <TableRow key={p.productId}><TableCell>{p.productName}</TableCell><TableCell className="text-right">{p.units}</TableCell><TableCell className="text-right font-medium">{currencySymbol} {formatNumber(p.profit)}</TableCell></TableRow>)}</TableBody>
               </Table>
             )}
           </CardContent>

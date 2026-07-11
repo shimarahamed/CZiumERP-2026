@@ -33,9 +33,16 @@ const COLLECTIONS = [
   'scheduledReports', 'presence',
 ];
 
+// Must match src/lib/super-admin.ts's ALL_MODULES exactly — this script's
+// own copy previously drifted ('Financial Management'/'Operations' instead
+// of 'Finance'/'Manufacturing'/'Project Management', and was missing
+// 'Shipping & Logistics' entirely), which permanently locked tenants created
+// via this script out of those modules since firestore.rules checks against
+// these exact names and nothing in the app can ever grant a name outside it.
 const ALL_MODULES = [
-  'General', 'Sales & Customers', 'Supply Chain', 'Financial Management',
-  'Human Resources', 'Operations', 'System',
+  'General', 'Sales & Customers', 'Supply Chain', 'Shipping & Logistics',
+  'Manufacturing', 'Project Management', 'Finance', 'Human Resources',
+  'Service Desk', 'System',
 ];
 
 const KEY_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS ?? './serviceAccountKey.json';

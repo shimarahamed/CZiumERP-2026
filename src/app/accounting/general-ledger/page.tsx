@@ -18,10 +18,22 @@ import { FXRatesWidget } from '@/components/FXRatesWidget';
 import { CSVExportButton } from '@/components/CSVExportButton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { formatNumber } from '@/lib/money';
 import { useFXRates } from '@/hooks/use-fx-rates';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
 type SortKey = 'date' | 'account' | 'debit' | 'credit';
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR'];
+
+const GENERAL_LEDGER_COLUMNS: ColumnDef[] = [
+    { id: 'date', label: 'Date', locked: true },
+    { id: 'account', label: 'Account' },
+    { id: 'description', label: 'Description' },
+    { id: 'debit', label: 'Debit' },
+    { id: 'credit', label: 'Credit' },
+    { id: 'balance', label: 'Balance' },
+];
 
 function GeneralLedgerPageInner() {
     const { ledgerEntries, stores, currency, currencySymbol, currencySymbols, isDataLoaded } = useAppContext();
@@ -34,6 +46,8 @@ function GeneralLedgerPageInner() {
     const [reportingCurrency, setReportingCurrency] = useState<Currency>(currency);
     const { convert } = useFXRates(reportingCurrency);
     const reportSymbol = reportingCurrency === currency ? currencySymbol : currencySymbols[reportingCurrency];
+    const columnVisibility = useColumnVisibility('general-ledger', GENERAL_LEDGER_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -115,18 +129,21 @@ function GeneralLedgerPageInner() {
                                     </Select>
                                 </div>
                             </div>
-                            <CSVExportButton
-                                data={processedEntries as unknown as Record<string, unknown>[]}
-                                filename="general-ledger"
-                                columns={[
-                                    { key: 'date' as const, label: 'Date' },
-                                    { key: 'account' as const, label: 'Account' },
-                                    { key: 'description' as const, label: 'Description' },
-                                    { key: 'displayDebit' as const, label: `Debit (${reportingCurrency})` },
-                                    { key: 'displayCredit' as const, label: `Credit (${reportingCurrency})` },
-                                    { key: 'balance' as const, label: `Balance (${reportingCurrency})` },
-                                ]}
-                            />
+                            <div className="flex items-center gap-2">
+                                <CSVExportButton
+                                    data={processedEntries as unknown as Record<string, unknown>[]}
+                                    filename="general-ledger"
+                                    columns={[
+                                        { key: 'date' as const, label: 'Date' },
+                                        { key: 'account' as const, label: 'Account' },
+                                        { key: 'description' as const, label: 'Description' },
+                                        { key: 'displayDebit' as const, label: `Debit (${reportingCurrency})` },
+                                        { key: 'displayCredit' as const, label: `Credit (${reportingCurrency})` },
+                                        { key: 'balance' as const, label: `Balance (${reportingCurrency})` },
+                                    ]}
+                                />
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
+                            </div>
                         </div>
                     </div>
                     <div><FXRatesWidget /></div>
@@ -137,11 +154,11 @@ function GeneralLedgerPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('date')}>Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('account')}>Account <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('debit')}>Debit <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('credit')}>Credit <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="text-right">Balance</TableHead>
+                                    {isVisible('account') && <TableHead><Button variant="ghost" onClick={() => handleSort('account')}>Account <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('description') && <TableHead>Description</TableHead>}
+                                    {isVisible('debit') && <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('debit')}>Debit <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('credit') && <TableHead className="text-right"><Button variant="ghost" onClick={() => handleSort('credit')}>Credit <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('balance') && <TableHead className="text-right">Balance</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             {!isDataLoaded ? (
@@ -152,15 +169,19 @@ function GeneralLedgerPageInner() {
                                     processedEntries.map(entry => (
                                         <TableRow key={entry.id}>
                                             <TableCell>{format(parseISO(entry.date), 'yyyy-MM-dd')}</TableCell>
-                                            <TableCell>{entry.account}</TableCell>
-                                            <TableCell>{entry.description}</TableCell>
-                                            <TableCell className="text-right font-mono">
-                                                {entry.displayDebit > 0 ? `${reportSymbol} ${entry.displayDebit.toFixed(2)}` : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">
-                                                {entry.displayCredit > 0 ? `${reportSymbol} ${entry.displayCredit.toFixed(2)}` : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">{reportSymbol} {entry.balance.toFixed(2)}</TableCell>
+                                            {isVisible('account') && <TableCell>{entry.account}</TableCell>}
+                                            {isVisible('description') && <TableCell>{entry.description}</TableCell>}
+                                            {isVisible('debit') && (
+                                                <TableCell className="text-right font-mono">
+                                                    {entry.displayDebit > 0 ? `${reportSymbol} ${formatNumber(entry.displayDebit)}` : '-'}
+                                                </TableCell>
+                                            )}
+                                            {isVisible('credit') && (
+                                                <TableCell className="text-right font-mono">
+                                                    {entry.displayCredit > 0 ? `${reportSymbol} ${formatNumber(entry.displayCredit)}` : '-'}
+                                                </TableCell>
+                                            )}
+                                            {isVisible('balance') && <TableCell className="text-right font-mono">{reportSymbol} {formatNumber(entry.balance)}</TableCell>}
                                         </TableRow>
                                     ))
                                 ) : (

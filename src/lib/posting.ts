@@ -3,7 +3,9 @@
 import { app } from '@/lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Invoice, IntercompanyTransaction, LedgerEntry, PayrollRun } from '@/types';
-import { addMoney, mulMoney, percentOf } from '@/lib/money';
+import { addMoney, mulMoney, percentOf, lineTotal } from '@/lib/money';
+
+const POSTING_REGION = 'asia-south1';
 
 /**
  * Post an invoice through the server-side transactional function
@@ -15,7 +17,7 @@ import { addMoney, mulMoney, percentOf } from '@/lib/money';
  */
 export async function postInvoiceServerSide(invoice: Invoice): Promise<boolean> {
   try {
-    const call = httpsCallable(getFunctions(app), 'postInvoiceWithLedger');
+    const call = httpsCallable(getFunctions(app, POSTING_REGION), 'postInvoiceWithLedger');
     await call({ invoice });
     return true;
   } catch (err: unknown) {
@@ -25,6 +27,31 @@ export async function postInvoiceServerSide(invoice: Invoice): Promise<boolean> 
       throw err;
     }
     return false; // backend unavailable → caller uses the client path
+  }
+}
+
+/** Fast path used by POS/new paid invoices: returns the invoice saved by the backend. */
+export async function postInvoiceServerSideFast(
+  invoice: Invoice,
+  invoicePrefix?: string
+): Promise<Invoice | null> {
+  try {
+    const call = httpsCallable<{ invoice: Invoice; invoicePrefix?: string }, { invoice?: Invoice }>(
+      getFunctions(app, POSTING_REGION),
+      'postInvoiceWithLedger'
+    );
+    const result = await call({ invoice, invoicePrefix });
+    return result.data.invoice ?? invoice;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code ?? '';
+    if (
+      code.includes('failed-precondition') ||
+      code.includes('permission-denied') ||
+      code.includes('invalid-argument')
+    ) {
+      throw err;
+    }
+    return null;
   }
 }
 
@@ -38,10 +65,10 @@ export async function postInvoiceServerSide(invoice: Invoice): Promise<boolean> 
  * overwrites the same documents instead of duplicating them.
  */
 export function buildInvoiceLedgerEntries(invoice: Invoice): LedgerEntry[] {
-  const subtotal = addMoney(...invoice.items.map(i => mulMoney(i.price, i.quantity)), 0);
+  const netSubtotal = addMoney(...invoice.items.map(i => lineTotal(i.price, i.quantity, i.discount, i.discountType)), 0);
   const cogs = addMoney(...invoice.items.map(i => mulMoney(i.cost ?? 0, i.quantity)), 0);
-  const discount = invoice.discount ? percentOf(subtotal, invoice.discount) : 0;
-  const taxable = addMoney(subtotal, -discount);
+  const discount = invoice.discount ? percentOf(netSubtotal, invoice.discount) : 0;
+  const taxable = addMoney(netSubtotal, -discount);
   const tax = invoice.taxRate ? percentOf(taxable, invoice.taxRate) : 0;
   const total = addMoney(taxable, tax);
 

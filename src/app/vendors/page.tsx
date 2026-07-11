@@ -6,7 +6,8 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { MoreHorizontal, PlusCircle, Pencil, Trash2, Upload } from "@/components/icons";
+import { MoreHorizontal, PlusCircle, Pencil, Trash2, Upload, Loader2 } from "@/components/icons";
+import { formatNumber } from '@/lib/money';
 import Link from 'next/link';
 import { RowContextMenu } from '@/components/RowContextMenu';
 import { usePageKeyboard } from '@/hooks/use-page-keyboard';
@@ -27,6 +28,15 @@ import { TableSkeleton } from '@/components/TableSkeleton';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, type Query, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { sendDepartmentEmail } from '@/lib/email';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const VENDORS_COLUMNS: ColumnDef[] = [
+    { id: 'name', label: 'Vendor', locked: true },
+    { id: 'contactPerson', label: 'Contact Person' },
+    { id: 'totalOrders', label: 'Total Orders' },
+    { id: 'totalSpent', label: 'Total Spent' },
+];
 
 const vendorSchema = z.object({
   name: z.string().min(1, "Vendor name is required."),
@@ -34,6 +44,13 @@ const vendorSchema = z.object({
   email: z.string().email("Invalid email address."),
   phone: z.string().min(1, "Phone number is required.").regex(/^[+\d][\d\s\-().]{6,19}$/, "Enter a valid phone number."),
   leadTimeDays: z.coerce.number().int().min(0, "Lead time must be a non-negative number.").optional(),
+  vendorCode: z.string().optional(),
+  taxVatNumber: z.string().optional(),
+  address: z.string().optional(),
+  paymentTerms: z.string().optional(),
+  currency: z.string().optional(),
+  creditLimit: z.coerce.number().min(0).optional(),
+  notes: z.string().optional(),
 });
 
 type VendorFormData = z.infer<typeof vendorSchema>;
@@ -46,6 +63,10 @@ export default function VendorsPage() {
     const [vendorToEdit, setVendorToEdit] = useState<Vendor | null>(null);
     const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const columnVisibility = useColumnVisibility('vendors', VENDORS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<VendorFormData>({
         resolver: zodResolver(vendorSchema),
@@ -55,10 +76,17 @@ export default function VendorsPage() {
             email: '',
             phone: '',
             leadTimeDays: 0,
+            vendorCode: '',
+            taxVatNumber: '',
+            address: '',
+            paymentTerms: '',
+            currency: '',
+            creditLimit: undefined,
+            notes: '',
         }
     });
 
-    const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const canManage = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier';
 
     const vendorsQuery = useMemo(() => {
         if (!tenantId) return null;
@@ -103,7 +131,10 @@ export default function VendorsPage() {
                 leadTimeDays: vendor.leadTimeDays ?? 0,
             });
         } else {
-            form.reset({ name: '', contactPerson: '', email: '', phone: '', leadTimeDays: 0 });
+            form.reset({
+                name: '', contactPerson: '', email: '', phone: '', leadTimeDays: 0,
+                vendorCode: '', taxVatNumber: '', address: '', paymentTerms: '', currency: '', creditLimit: undefined, notes: '',
+            });
         }
         setIsFormOpen(true);
     };
@@ -111,6 +142,7 @@ export default function VendorsPage() {
     usePageKeyboard({ onNew: canManage ? () => handleOpenForm() : undefined });
 
     const onSubmit = async (data: VendorFormData) => {
+        setIsSaving(true);
         try {
             if (!tenantId) {
                 toast({ variant: 'destructive', title: "Error", description: "Tenant information not available." });
@@ -145,22 +177,28 @@ export default function VendorsPage() {
             setVendorToEdit(null);
         } catch (error) {
             console.error("Error saving vendor:", error);
-            toast({ variant: 'destructive', title: "Error", description: "Could not save vendor details." });
+            const description = error instanceof Error ? error.message : "Could not save vendor details.";
+            toast({ variant: 'destructive', title: "Error", description });
+        } finally {
+            setIsSaving(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!vendorToDelete || !tenantId) return;
+        setIsDeleting(true);
         try {
             const vendorRef = doc(db, "tenants", tenantId, "vendors", vendorToDelete.id);
             await deleteDoc(vendorRef);
             toast({ title: "Vendor Deleted", description: `${vendorToDelete.name} has been deleted.` });
             addActivityLog('Vendor Deleted', `Deleted vendor: ${vendorToDelete.name} (ID: ${vendorToDelete.id})`);
+            setVendorToDelete(null);
         } catch (error) {
             console.error("Error deleting vendor:", error);
-            toast({ variant: 'destructive', title: "Error", description: "Could not delete vendor." });
+            const description = error instanceof Error ? error.message : "Could not delete vendor.";
+            toast({ variant: 'destructive', title: "Error", description });
         } finally {
-            setVendorToDelete(null);
+            setIsDeleting(false);
         }
     };
 
@@ -182,6 +220,7 @@ export default function VendorsPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                                 />
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
                                 {canManage && (
                                     <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
                                         <Link href="/settings/import">
@@ -204,9 +243,9 @@ export default function VendorsPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Vendor</TableHead>
-                                    <TableHead>Contact Person</TableHead>
-                                    <TableHead className="hidden md:table-cell text-right">Total Orders</TableHead>
-                                    <TableHead className="hidden md:table-cell text-right">Total Spent</TableHead>
+                                    {isVisible('contactPerson') && <TableHead>Contact Person</TableHead>}
+                                    {isVisible('totalOrders') && <TableHead className="hidden md:table-cell text-right">Total Orders</TableHead>}
+                                    {isVisible('totalSpent') && <TableHead className="hidden md:table-cell text-right">Total Spent</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -230,14 +269,16 @@ export default function VendorsPage() {
                                           ]}
                                         >
                                             <TableCell className="font-medium truncate">{vendor.name}</TableCell>
-                                            <TableCell>
-                                                <div className="truncate">{vendor.contactPerson}</div>
-                                                <div className="text-sm text-muted-foreground md:hidden">
-                                                    {stats.totalOrders} POs ({currencySymbol} {stats.totalSpent.toFixed(2)})
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="hidden md:table-cell text-right">{stats.totalOrders}</TableCell>
-                                            <TableCell className="hidden md:table-cell text-right">{currencySymbol} {stats.totalSpent.toFixed(2)}</TableCell>
+                                            {isVisible('contactPerson') && (
+                                                <TableCell>
+                                                    <div className="truncate">{vendor.contactPerson}</div>
+                                                    <div className="text-sm text-muted-foreground md:hidden">
+                                                        {stats.totalOrders} POs ({currencySymbol} {formatNumber(stats.totalSpent)})
+                                                    </div>
+                                                </TableCell>
+                                            )}
+                                            {isVisible('totalOrders') && <TableCell className="hidden md:table-cell text-right">{stats.totalOrders}</TableCell>}
+                                            {isVisible('totalSpent') && <TableCell className="hidden md:table-cell text-right">{currencySymbol} {formatNumber(stats.totalSpent)}</TableCell>}
                                             <TableCell>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -264,7 +305,7 @@ export default function VendorsPage() {
             </main>
 
             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent>
+                <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{vendorToEdit ? 'Edit Vendor' : 'Add New Vendor'}</DialogTitle>
                         <DialogDescription>
@@ -290,8 +331,37 @@ export default function VendorsPage() {
                                     <FormItem><FormLabel>Lead Time (days)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                             </div>
+                            <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Additional details (optional)</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={form.control} name="vendorCode" render={({ field }) => (
+                                        <FormItem><FormLabel>Vendor Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="taxVatNumber" render={({ field }) => (
+                                        <FormItem><FormLabel>Tax / VAT Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                                        <FormItem><FormLabel>Payment Terms</FormLabel><FormControl><Input placeholder="e.g. Net 30" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="currency" render={({ field }) => (
+                                        <FormItem><FormLabel>Currency</FormLabel><FormControl><Input placeholder="e.g. USD" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="creditLimit" render={({ field }) => (
+                                        <FormItem><FormLabel>Credit Limit</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
+                                <FormField control={form.control} name="address" render={({ field }) => (
+                                    <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="notes" render={({ field }) => (
+                                    <FormItem><FormLabel>Notes</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
                             <DialogFooter>
-                                <Button type="submit">{vendorToEdit ? 'Save Changes' : 'Add Vendor'}</Button>
+                                <Button type="submit" disabled={isSaving}>
+                                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    {vendorToEdit ? 'Save Changes' : 'Add Vendor'}
+                                </Button>
                             </DialogFooter>
                         </form>
                     </Form>
@@ -305,8 +375,11 @@ export default function VendorsPage() {
                         <AlertDialogDescription>This action cannot be undone. This will permanently delete the vendor.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Delete
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

@@ -13,11 +13,11 @@ export function ThemeToggle() {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={toggle}
-            className="rounded-full"
+            className="rounded-full text-foreground border-input-border"
           >
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>

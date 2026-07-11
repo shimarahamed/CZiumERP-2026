@@ -23,6 +23,15 @@ import type { TaxRate } from '@/types';
 import { MoreHorizontal, PlusCircle, ArrowUpDown } from '@/components/icons';
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { Badge } from '@/components/ui/badge';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const TAX_RATES_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', locked: true },
+  { id: 'rate', label: 'Rate (%)' },
+  { id: 'jurisdiction', label: 'Jurisdiction' },
+  { id: 'isDefault', label: 'Default' },
+];
 
 const taxRateSchema = z.object({
   name: z.string().min(1, "Tax rate name is required."),
@@ -44,6 +53,8 @@ function TaxManagementPageInner() {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('name');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const columnVisibility = useColumnVisibility('taxRates', TAX_RATES_COLUMNS);
+    const { isVisible } = columnVisibility;
 
 
     const form = useForm<TaxRateFormData>({
@@ -140,6 +151,7 @@ function TaxManagementPageInner() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                         <PlusCircle className="h-4 w-4" /> Add Tax Rate
                     </Button>
@@ -150,9 +162,9 @@ function TaxManagementPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('name')}>Name <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('rate')}>Rate (%) <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>Jurisdiction</TableHead>
-                                    <TableHead>Default</TableHead>
+                                    {isVisible('rate') && <TableHead><Button variant="ghost" onClick={() => handleSort('rate')}>Rate (%) <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('jurisdiction') && <TableHead>Jurisdiction</TableHead>}
+                                    {isVisible('isDefault') && <TableHead>Default</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -163,9 +175,9 @@ function TaxManagementPageInner() {
                                 {sortedAndFilteredTaxRates.map(rate => (
                                     <TableRow key={rate.id}>
                                         <TableCell>{rate.name}</TableCell>
-                                        <TableCell>{rate.rate}%</TableCell>
-                                        <TableCell>{rate.jurisdiction || <span className="text-muted-foreground">—</span>}</TableCell>
-                                        <TableCell>{rate.isDefault && <Badge>Default</Badge>}</TableCell>
+                                        {isVisible('rate') && <TableCell>{rate.rate}%</TableCell>}
+                                        {isVisible('jurisdiction') && <TableCell>{rate.jurisdiction || <span className="text-muted-foreground">—</span>}</TableCell>}
+                                        {isVisible('isDefault') && <TableCell>{rate.isDefault && <Badge>Default</Badge>}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu><DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end"><DropdownMenuLabel>Actions</DropdownMenuLabel>

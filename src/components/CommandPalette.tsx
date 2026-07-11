@@ -44,7 +44,7 @@ const NAV_ITEMS = [
   { label: 'Route Planning', href: '/shipping/routes', icon: Truck, group: 'Logistics' },
   { label: 'Activity Logs', href: '/activity', icon: History, group: 'System' },
   { label: 'Settings', href: '/settings', icon: Settings, group: 'System' },
-  { label: 'User Accounts', href: '/users', icon: Users, group: 'System' },
+  { label: 'Staff Accounts', href: '/users', icon: Users, group: 'System' },
 ];
 
 export function CommandPalette() {

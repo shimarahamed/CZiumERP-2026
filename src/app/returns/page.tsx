@@ -18,15 +18,27 @@ import Header from "@/components/Header";
 import { PageSkeleton } from '@/components/PageSkeleton';
 import { useToast } from "@/hooks/use-toast";
 import { useAppContext } from "@/context/AppContext";
+import { formatNumber, lineTotal } from '@/lib/money';
 import type { Invoice, Refund, InvoiceItem } from "@/types";
 import { Undo2, Loader2 } from "@/components/icons";
 import { db } from "@/lib/firebase";
 import { runTransaction, doc } from "firebase/firestore";
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const RETURNS_COLUMNS: ColumnDef[] = [
+  { id: 'product', label: 'Product', locked: true },
+  { id: 'price', label: 'Price' },
+  { id: 'available', label: 'Available' },
+  { id: 'refundQty', label: 'Refund Qty' },
+];
 
 const refundItemSchema = z.object({
   productId: z.string(),
   productName: z.string(),
   price: z.number(),
+  discount: z.number().optional(),
+  discountType: z.enum(['percent', 'amount']).optional(),
   maxQuantity: z.number(),
   refundQuantity: z.coerce.number().int().min(0),
   selected: z.boolean(),
@@ -63,6 +75,8 @@ export default function ReturnsPage() {
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+    const columnVisibility = useColumnVisibility('returns-items', RETURNS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<ReturnFormData>({
         resolver: zodResolver(returnSchema),
@@ -99,6 +113,8 @@ export default function ReturnsPage() {
                     productId: item.productId,
                     productName: item.productName,
                     price: item.price,
+                    discount: item.discount,
+                    discountType: item.discountType,
                     maxQuantity: item.quantity,
                     refundQuantity: 0,
                     selected: false,
@@ -117,7 +133,8 @@ export default function ReturnsPage() {
         return watchedItems.reduce((total, item) => {
             if (item.selected) {
                 const quantity = Number(item.refundQuantity) || 0;
-                return total + (item.price * quantity);
+                // Refund what was actually paid — net of the item's own discount.
+                return total + lineTotal(item.price, quantity, item.discount, item.discountType);
             }
             return total;
         }, 0);
@@ -193,13 +210,15 @@ export default function ReturnsPage() {
             }));
             setRefunds([newRefund, ...refunds]);
 
-            addActivityLog('Refund Processed', `Processed refund of ${currencySymbol} ${totalRefundAmount.toFixed(2)} for invoice ${data.invoiceId}. Reason: ${data.reason}`);
+            addActivityLog('Refund Processed', `Processed refund of ${currencySymbol} ${formatNumber(totalRefundAmount)} for invoice ${data.invoiceId}. Reason: ${data.reason}`);
             toast({ title: 'Refund Processed Successfully' });
             form.reset();
             setSelectedInvoice(null);
             replace([]);
         } catch (error) {
-            toast({ variant: 'destructive', title: 'Refund Failed', description: 'Could not process refund. Please try again.' });
+            console.error('Error processing refund:', error);
+            const description = error instanceof Error ? error.message : 'Could not process refund. Please try again.';
+            toast({ variant: 'destructive', title: 'Refund Failed', description });
         } finally {
             setIsLoading(false);
         }
@@ -238,7 +257,7 @@ export default function ReturnsPage() {
                                                     <SelectContent>
                                                         {paidInvoices.map(invoice => (
                                                             <SelectItem key={invoice.id} value={invoice.id}>
-                                                                {invoice.id} - {invoice.customerName || 'Walk-in'} - {currencySymbol} {invoice.amount.toFixed(2)}
+                                                                {invoice.id} - {invoice.customerName || 'Walk-in'} - {currencySymbol} {formatNumber(invoice.amount)}
                                                             </SelectItem>
                                                         ))}
                                                     </SelectContent>
@@ -263,7 +282,10 @@ export default function ReturnsPage() {
                                 </div>
                                 {selectedInvoice && (
                                     <div className="space-y-4">
-                                        <h3 className="font-medium">Select Items to Refund from Invoice {selectedInvoice.id}</h3>
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-medium">Select Items to Refund from Invoice {selectedInvoice.id}</h3>
+                                            <ColumnVisibilityMenu visibility={columnVisibility} />
+                                        </div>
                                         <Card>
                                             <CardContent className="p-0">
                                                 <Table>
@@ -284,9 +306,9 @@ export default function ReturnsPage() {
                                                                 />
                                                             </TableHead>
                                                             <TableHead>Product</TableHead>
-                                                            <TableHead className="text-right">Price</TableHead>
-                                                            <TableHead className="text-center">Available</TableHead>
-                                                            <TableHead className="w-32">Refund Qty</TableHead>
+                                                            {isVisible('price') && <TableHead className="text-right">Price</TableHead>}
+                                                            {isVisible('available') && <TableHead className="text-center">Available</TableHead>}
+                                                            {isVisible('refundQty') && <TableHead className="w-32">Refund Qty</TableHead>}
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
@@ -312,8 +334,9 @@ export default function ReturnsPage() {
                                                                     />
                                                                 </TableCell>
                                                                 <TableCell>{field.productName}</TableCell>
-                                                                <TableCell className="text-right">{currencySymbol} {field.price.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-center">{field.maxQuantity}</TableCell>
+                                                                {isVisible('price') && <TableCell className="text-right">{currencySymbol} {formatNumber(field.price)}</TableCell>}
+                                                                {isVisible('available') && <TableCell className="text-center">{field.maxQuantity}</TableCell>}
+                                                                {isVisible('refundQty') && (
                                                                 <TableCell>
                                                                     <FormField
                                                                         control={form.control}
@@ -328,6 +351,7 @@ export default function ReturnsPage() {
                                                                         )}
                                                                     />
                                                                 </TableCell>
+                                                                )}
                                                             </TableRow>
                                                         ))}
                                                     </TableBody>
@@ -339,7 +363,7 @@ export default function ReturnsPage() {
                                         <div className="flex justify-end pt-4">
                                             <div className="text-right">
                                                 <p className="text-muted-foreground">Total Refund Amount</p>
-                                                <p className="text-2xl font-bold">{currencySymbol} {totalRefundAmount.toFixed(2)}</p>
+                                                <p className="text-2xl font-bold">{currencySymbol} {formatNumber(totalRefundAmount)}</p>
                                             </div>
                                         </div>
                                     </div>

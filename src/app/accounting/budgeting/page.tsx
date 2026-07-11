@@ -18,6 +18,7 @@ import Header from "@/components/Header";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/hooks/use-toast";
 import { useAppContext } from '@/context/AppContext';
+import { formatNumber } from '@/lib/money';
 import type { Budget } from '@/types';
 import { Progress } from '@/components/ui/progress';
 import { MoreHorizontal, PlusCircle } from '@/components/icons';
@@ -136,19 +137,19 @@ function BudgetingPageInner() {
                                     <div className="space-y-2">
                                         <div className="flex justify-between text-sm">
                                             <span className="text-muted-foreground">Actual Spent</span>
-                                            <span>{currencySymbol} {budget.actualAmount.toFixed(2)}</span>
+                                            <span>{currencySymbol} {formatNumber(budget.actualAmount)}</span>
                                         </div>
                                         <div className="flex justify-between text-sm font-medium">
                                             <span className="text-muted-foreground">Budgeted</span>
-                                            <span>{currencySymbol} {budget.budgetedAmount.toFixed(2)}</span>
+                                            <span>{currencySymbol} {formatNumber(budget.budgetedAmount)}</span>
                                         </div>
                                         <Progress value={percentage} className={cn(percentage > 100 && "[&>div]:bg-destructive")} />
                                     </div>
                                 </CardContent>
                                 <CardFooter>
                                     <p className={cn("text-xs", percentage > 100 ? "text-destructive" : "text-muted-foreground")}>
-                                        {percentage.toFixed(1)}% of budget used.
-                                        {percentage > 100 && ` ${currencySymbol} ${(budget.actualAmount - budget.budgetedAmount).toFixed(2)} over budget.`}
+                                        {formatNumber(percentage, 1, 1)}% of budget used.
+                                        {percentage > 100 && ` ${currencySymbol} ${formatNumber(budget.actualAmount - budget.budgetedAmount)} over budget.`}
                                     </p>
                                 </CardFooter>
                             </Card>
@@ -172,7 +173,7 @@ function BudgetingPageInner() {
                                     </Select><FormMessage />
                                 </FormItem>
                             )}/>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="budgetedAmount" render={({ field }) => (
                                     <FormItem><FormLabel>Budgeted Amount</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                                 )}/>

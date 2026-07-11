@@ -43,7 +43,7 @@ type UserFormData = z.infer<typeof userSchema>;
 type SortKey = 'name' | 'email' | 'role';
 
 function UsersPageInner() {
-  usePageTitle('User Accounts');
+  usePageTitle('Staff Accounts');
     const { users, setUsers, addActivityLog, user: currentUser, isDataLoaded, smtpConfigList, emailTemplates, setEmailLogs, companyName, stores, tenantId } = useAppContext();
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -211,8 +211,11 @@ function UsersPageInner() {
 
     return (
         <div className="flex flex-col h-full">
-            <Header title="User Account Management" />
+            <Header title="Staff Accounts" />
             <main className="flex-1 overflow-auto p-4 md:p-6">
+                 <p className="text-sm text-muted-foreground -mt-1 mb-4">
+                    Manage login accounts and roles for people who work at this business. Looking for buyer records instead? See <a href="/customers" className="underline underline-offset-2 hover:text-foreground">Customers</a>.
+                 </p>
                  <div className="flex flex-col md:flex-row justify-end md:items-center gap-4 mb-4">
                     <Input
                         placeholder="Search by name or email..."

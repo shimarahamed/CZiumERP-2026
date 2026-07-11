@@ -31,10 +31,10 @@ type NavCategory = {
 
 
 const navLinksConfig: Record<Role, string[]> = {
-    admin: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Stores', 'Warehouses', 'Reports', 'Cohort Analysis', 'Profitability', 'Scheduled Reports', 'Assets', 'Employees', 'Departments', 'User Accounts', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'Payroll', 'HR Settings', 'Activity Logs', 'Settings', 'Custom Roles', 'Custom Fields', 'Bulk Import', 'RBAC Permissions', 'Multi-Tenant', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking', 'System Issues', 'Testing Checklist', 'Data Management'],
+    admin: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Stores', 'Warehouses', 'Reports', 'Cohort Analysis', 'Profitability', 'Scheduled Reports', 'Assets', 'Employees', 'Departments', 'Staff Accounts', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'Payroll', 'HR Settings', 'Activity Logs', 'Settings', 'Custom Roles', 'Custom Fields', 'Bulk Import', 'RBAC Permissions', 'Multi-Tenant', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking', 'System Issues', 'Testing Checklist', 'Data Management'],
     manager: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Stores', 'Reports', 'Cohort Analysis', 'Profitability', 'Activity Logs', 'Settings', 'Bulk Import', 'Assets', 'Employees', 'Departments', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'HR Settings', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking'],
-    cashier: ['Dashboard', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Barcode Scanner', 'Timesheets', 'Expense Claims'],
-    'inventory-staff': ['AI Assistant', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Vendors', 'Reports', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Barcode Scanner', 'Timesheets', 'Expense Claims'],
+    cashier: ['Dashboard', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Barcode Scanner', 'Vendors', 'Request for Quotation', 'Purchase Orders', 'Inventory', 'Cycle Count', 'Timesheets', 'Expense Claims', 'Bulk Import'],
+    'inventory-staff': ['AI Assistant', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Vendors', 'Reports', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Barcode Scanner', 'Timesheets', 'Expense Claims', 'Bulk Import'],
 };
 
 // Reorganized structure for better logical flow
@@ -57,13 +57,13 @@ const categories: NavCategory[] = [
     icon: ShoppingCart,
     links: [
       { href: '/pos', label: 'Point of Sale', icon: CreditCard },
-      { href: '/campaigns', label: 'Marketing Campaigns', icon: Megaphone },
-      { href: '/leads', label: 'Leads', icon: Target },
-      { href: '/customers', label: 'Customers', icon: Users },
-      { href: '/quotations', label: 'Quotations', icon: ClipboardList },
       { href: '/invoices', label: 'Invoices', icon: FileText },
+      { href: '/customers', label: 'Customers', icon: Users },
       { href: '/payments', label: 'Payments', icon: CreditCard },
       { href: '/returns', label: 'Returns', icon: Undo2 },
+      { href: '/quotations', label: 'Quotations', icon: ClipboardList },
+      { href: '/campaigns', label: 'Marketing Campaigns', icon: Megaphone },
+      { href: '/leads', label: 'Leads', icon: Target },
       { href: '/upselling', label: 'AI Upselling', icon: Lightbulb },
       { href: '/scanner', label: 'Barcode Scanner', icon: ScanLine },
     ],
@@ -72,10 +72,10 @@ const categories: NavCategory[] = [
     label: 'Supply Chain',
     icon: Package,
     links: [
-      { href: '/vendors', label: 'Vendors', icon: Building2 },
-      { href: '/rfq', label: 'Request for Quotation', icon: ClipboardList },
-      { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
       { href: '/inventory', label: 'Inventory', icon: Package },
+      { href: '/vendors', label: 'Vendors', icon: Building2 },
+      { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
+      { href: '/rfq', label: 'Request for Quotation', icon: ClipboardList },
       { href: '/inventory/cycle-count', label: 'Cycle Count', icon: ClipboardCheck },
     ],
   },
@@ -160,7 +160,7 @@ const categories: NavCategory[] = [
     links: [
       { href: '/stores', label: 'Stores', icon: Store },
       { href: '/warehouses', label: 'Warehouses', icon: Store },
-      { href: '/users', label: 'User Accounts', icon: UserRoundCog },
+      { href: '/users', label: 'Staff Accounts', icon: UserRoundCog },
       { href: '/activity', label: 'Activity Logs', icon: History },
       { href: '/settings', label: 'Settings', icon: Settings },
       { href: '/settings/roles', label: 'Custom Roles', icon: Shield },

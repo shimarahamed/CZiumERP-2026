@@ -10,8 +10,17 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { usePlatformData } from '@/hooks/use-platform-data';
 import { usePlatformUsers } from '@/hooks/use-platform-users';
 import type { Role } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
 const ROLES: Role[] = ['admin', 'manager', 'cashier', 'inventory-staff'];
+
+const PLATFORM_USERS_COLUMNS: ColumnDef[] = [
+    { id: 'user', label: 'User', locked: true },
+    { id: 'email', label: 'Email' },
+    { id: 'role', label: 'Role' },
+    { id: 'tenant', label: 'Tenant' },
+];
 
 export default function SuperAdminUsersPage() {
   const { tenants } = usePlatformData();
@@ -19,6 +28,8 @@ export default function SuperAdminUsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [tenantFilter, setTenantFilter] = useState<string>('all');
+  const columnVisibility = useColumnVisibility('platform-users', PLATFORM_USERS_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const roleCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -80,11 +91,17 @@ export default function SuperAdminUsersPage() {
                 {tenants.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            <ColumnVisibilityMenu visibility={columnVisibility} />
           </div>
 
           <Table>
             <TableHeader>
-              <TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Tenant</TableHead></TableRow>
+              <TableRow>
+                <TableHead>User</TableHead>
+                {isVisible('email') && <TableHead>Email</TableHead>}
+                {isVisible('role') && <TableHead>Role</TableHead>}
+                {isVisible('tenant') && <TableHead>Tenant</TableHead>}
+              </TableRow>
             </TableHeader>
             <TableBody>
               {!isLoaded ? (
@@ -102,9 +119,9 @@ export default function SuperAdminUsersPage() {
                       <span className="font-medium">{u.name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs">{u.email}</TableCell>
-                  <TableCell><Badge variant="secondary" className="capitalize">{u.role}</Badge></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{u.tenantName}</TableCell>
+                  {isVisible('email') && <TableCell className="text-xs">{u.email}</TableCell>}
+                  {isVisible('role') && <TableCell><Badge variant="secondary" className="capitalize">{u.role}</Badge></TableCell>}
+                  {isVisible('tenant') && <TableCell className="text-xs text-muted-foreground">{u.tenantName}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>

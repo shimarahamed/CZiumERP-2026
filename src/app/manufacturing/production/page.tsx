@@ -26,6 +26,16 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { adjustStock, getDefaultWarehouse } from '@/lib/warehouse';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const PRODUCTION_ORDERS_COLUMNS: ColumnDef[] = [
+  { id: 'orderId', label: 'Order ID', locked: true },
+  { id: 'product', label: 'Product' },
+  { id: 'status', label: 'Status' },
+  { id: 'quantity', label: 'Quantity' },
+  { id: 'scheduledDates', label: 'Scheduled Dates' },
+];
 
 const productionOrderSchema = z.object({
   productId: z.string().min(1, "Please select a product to manufacture."),
@@ -51,6 +61,8 @@ function ProductionOrdersPageInner() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [orderToEdit, setOrderToEdit] = useState<ProductionOrder | null>(null);
     const [orderToUpdateStatus, setOrderToUpdateStatus] = useState<ProductionOrder | null>(null);
+    const columnVisibility = useColumnVisibility('production-orders', PRODUCTION_ORDERS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<ProductionOrderFormData>({
         resolver: zodResolver(productionOrderSchema),
@@ -191,11 +203,14 @@ function ProductionOrdersPageInner() {
                                 <CardTitle>Production Schedule</CardTitle>
                                 <CardDescription>Plan, schedule, and track all manufacturing jobs.</CardDescription>
                             </div>
-                            {canManage && (
-                                <Button size="sm" onClick={() => handleOpenForm()}>
-                                    <PlusCircle className="mr-2 h-4 w-4" /> New Production Order
-                                </Button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
+                                {canManage && (
+                                    <Button size="sm" onClick={() => handleOpenForm()}>
+                                        <PlusCircle className="mr-2 h-4 w-4" /> New Production Order
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -203,10 +218,10 @@ function ProductionOrdersPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Order ID</TableHead>
-                                    <TableHead>Product</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Quantity</TableHead>
-                                    <TableHead>Scheduled Dates</TableHead>
+                                    {isVisible('product') && <TableHead>Product</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
+                                    {isVisible('quantity') && <TableHead>Quantity</TableHead>}
+                                    {isVisible('scheduledDates') && <TableHead>Scheduled Dates</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -217,10 +232,10 @@ function ProductionOrdersPageInner() {
                                 {productionOrders.map(order => (
                                     <TableRow key={order.id}>
                                         <TableCell>{order.id}</TableCell>
-                                        <TableCell>{order.productName}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[order.status]} className="capitalize">{order.status.replace('-', ' ')}</Badge></TableCell>
-                                        <TableCell>{order.quantity}</TableCell>
-                                        <TableCell>{format(new Date(order.scheduledStartDate), 'PPP')} - {format(new Date(order.scheduledEndDate), 'PPP')}</TableCell>
+                                        {isVisible('product') && <TableCell>{order.productName}</TableCell>}
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[order.status]} className="capitalize">{order.status.replace('-', ' ')}</Badge></TableCell>}
+                                        {isVisible('quantity') && <TableCell>{order.quantity}</TableCell>}
+                                        {isVisible('scheduledDates') && <TableCell>{format(new Date(order.scheduledStartDate), 'PPP')} - {format(new Date(order.scheduledEndDate), 'PPP')}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={!canManage}><MoreHorizontal/></Button></DropdownMenuTrigger>
@@ -260,7 +275,7 @@ function ProductionOrdersPageInner() {
                             <FormField control={form.control} name="quantity" render={({ field }) => (
                                <FormItem><FormLabel>Quantity</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
                             )}/>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                <FormField control={form.control} name="scheduledStartDate" render={({ field }) => (
                                     <FormItem><FormLabel>Start Date</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                                 )}/>

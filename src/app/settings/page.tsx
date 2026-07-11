@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import { usePageTitle } from '@/hooks/use-page-title';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Header from "@/components/Header";
@@ -14,20 +15,82 @@ import ModulesSettings from '@/components/settings/ModulesSettings';
 import DataPrivacySettings from '@/components/settings/DataPrivacySettings';
 import DeveloperSettings from '@/components/settings/DeveloperSettings';
 import EmailNotificationsSettings from '@/components/settings/EmailNotificationsSettings';
+import SmsWhatsappSettings from '@/components/settings/SmsWhatsappSettings';
 import ApiWebhooksSettings from '@/components/settings/ApiWebhooksSettings';
-import Link from 'next/link';
-import { Shield, ClipboardList, Upload } from '@/components/icons';
+import { cn } from '@/lib/utils';
+import {
+    Building2, Wallet, Mail, PlugZap,
+} from '@/components/icons';
+import type { LucideIcon } from 'lucide-react';
 
-const moreSettingsLinks = [
-    { href: '/settings/roles', label: 'Custom Roles', description: 'Fine-tune permissions beyond the base roles.', icon: Shield },
-    { href: '/settings/custom-fields', label: 'Custom Fields', description: 'Add extra fields to records across the app.', icon: ClipboardList },
-    { href: '/settings/import', label: 'Bulk Import', description: 'Import records in bulk from a spreadsheet.', icon: Upload },
+type SettingsGroup = {
+    id: string;
+    label: string;
+    description: string;
+    icon: LucideIcon;
+    tabs: { value: string; label: string; content: React.ReactNode }[];
+};
+
+const groups: SettingsGroup[] = [
+    {
+        id: 'organization',
+        label: 'Organization',
+        description: 'Branding, regional defaults, and which modules are enabled for this tenant.',
+        icon: Building2,
+        tabs: [
+            { value: 'company-branding', label: 'Company & Branding', content: <CompanyBrandingSettings /> },
+            { value: 'financial-regional', label: 'Financial & Regional', content: <FinancialRegionalSettings /> },
+            { value: 'modules', label: 'Modules', content: <ModulesSettings /> },
+        ],
+    },
+    {
+        id: 'sales',
+        label: 'Sales & Loyalty',
+        description: 'Customer-facing programs like loyalty tiers and rewards.',
+        icon: Wallet,
+        tabs: [
+            { value: 'loyalty', label: 'Loyalty Program', content: <LoyaltySettings /> },
+        ],
+    },
+    {
+        id: 'communications',
+        label: 'Communications',
+        description: 'Outbound email, SMS, and WhatsApp channels used across the app.',
+        icon: Mail,
+        tabs: [
+            { value: 'email-notifications', label: 'Email & Notifications', content: <EmailNotificationsSettings /> },
+            { value: 'sms-whatsapp', label: 'SMS & WhatsApp', content: <SmsWhatsappSettings /> },
+        ],
+    },
+    {
+        id: 'advanced',
+        label: 'Data & Developer',
+        description: 'Data exports, API access, webhooks, and sync behavior for developers.',
+        icon: PlugZap,
+        tabs: [
+            { value: 'data-privacy', label: 'Data & Privacy', content: <DataPrivacySettings /> },
+            {
+                value: 'api-webhooks', label: 'API & Webhooks', content: (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>API & Webhooks</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <ApiWebhooksSettings />
+                        </CardContent>
+                    </Card>
+                )
+            },
+            { value: 'developer', label: 'Developer', content: <DeveloperSettings /> },
+        ],
+    },
 ];
 
 export default function SettingsPage() {
     usePageTitle('Settings');
     const { user } = useAppContext();
     const canManage = user?.role === 'admin';
+    const [activeGroup, setActiveGroup] = useState(groups[0].id);
 
     if (!canManage) {
         return (
@@ -39,75 +102,56 @@ export default function SettingsPage() {
         );
     }
 
+    const current = groups.find(g => g.id === activeGroup) ?? groups[0];
+
     return (
         <div className="flex flex-col h-full">
             <Header title="Settings" />
             <Breadcrumb items={[{ label: 'System', href: '/users' }, { label: 'Settings' }]} />
             <main className="flex-1 overflow-auto p-4 md:p-6">
-                <Tabs defaultValue="company-branding" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 h-auto">
-                        <TabsTrigger value="company-branding">Company & Branding</TabsTrigger>
-                        <TabsTrigger value="financial-regional">Financial & Regional</TabsTrigger>
-                        <TabsTrigger value="loyalty">Loyalty Program</TabsTrigger>
-                        <TabsTrigger value="modules">Modules</TabsTrigger>
-                        <TabsTrigger value="email-notifications">Email & Notifications</TabsTrigger>
-                        <TabsTrigger value="data-privacy">Data & Privacy</TabsTrigger>
-                        <TabsTrigger value="api-webhooks">API & Webhooks</TabsTrigger>
-                        <TabsTrigger value="developer">Developer</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="company-branding">
-                        <CompanyBrandingSettings />
-                    </TabsContent>
-                    <TabsContent value="financial-regional">
-                        <FinancialRegionalSettings />
-                    </TabsContent>
-                    <TabsContent value="loyalty">
-                        <LoyaltySettings />
-                    </TabsContent>
-                    <TabsContent value="modules">
-                        <ModulesSettings />
-                    </TabsContent>
-                    <TabsContent value="email-notifications">
-                        <EmailNotificationsSettings />
-                    </TabsContent>
-                    <TabsContent value="data-privacy">
-                        <DataPrivacySettings />
-                    </TabsContent>
-                    <TabsContent value="api-webhooks">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>API & Webhooks</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <ApiWebhooksSettings />
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-                    <TabsContent value="developer">
-                        <DeveloperSettings />
-                    </TabsContent>
-                </Tabs>
+                <div className="flex flex-col lg:flex-row gap-6">
+                    {/* Group sidebar */}
+                    <nav className="lg:w-56 shrink-0">
+                        <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
+                            {groups.map(group => (
+                                <button
+                                    key={group.id}
+                                    onClick={() => setActiveGroup(group.id)}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-left whitespace-nowrap transition-colors",
+                                        activeGroup === group.id
+                                            ? "bg-primary/10 text-primary"
+                                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    )}
+                                >
+                                    <group.icon className="h-4 w-4 shrink-0" />
+                                    {group.label}
+                                </button>
+                            ))}
+                        </div>
+                    </nav>
 
-                <Card className="mt-6">
-                    <CardHeader>
-                        <CardTitle className="text-base">More Settings</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        {moreSettingsLinks.map(link => (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className="flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted"
-                            >
-                                <link.icon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="font-medium">{link.label}</p>
-                                    <p className="text-xs text-muted-foreground">{link.description}</p>
-                                </div>
-                            </Link>
-                        ))}
-                    </CardContent>
-                </Card>
+                    {/* Active group content */}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm text-muted-foreground mb-4">{current.description}</p>
+                        {current.tabs.length > 1 ? (
+                            <Tabs defaultValue={current.tabs[0].value} className="w-full">
+                                <TabsList className="flex-wrap h-auto">
+                                    {current.tabs.map(tab => (
+                                        <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+                                    ))}
+                                </TabsList>
+                                {current.tabs.map(tab => (
+                                    <TabsContent key={tab.value} value={tab.value}>
+                                        {tab.content}
+                                    </TabsContent>
+                                ))}
+                            </Tabs>
+                        ) : (
+                            current.tabs[0].content
+                        )}
+                    </div>
+                </div>
             </main>
         </div>
     );

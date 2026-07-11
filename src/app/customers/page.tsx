@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import Header from "@/components/Header";
 import { CSVExportButton } from '@/components/CSVExportButton';
+import { formatNumber } from '@/lib/money';
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Customer, Invoice, CustomerTier } from '@/types';
@@ -36,14 +37,29 @@ import { db } from '@/lib/firebase';
 import { collection, query, orderBy, type Query } from 'firebase/firestore';
 import { enrichLead } from '@/ai/flows/enrich-lead-flow';
 import { Separator } from '@/components/ui/separator';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const CUSTOMERS_COLUMNS: ColumnDef[] = [
+    { id: 'name', label: 'Customer', locked: true },
+    { id: 'tier', label: 'Tier' },
+    { id: 'loyaltyPoints', label: 'Loyalty Points' },
+    { id: 'email', label: 'Email' },
+];
 
 const customerSchema = z.object({
     name: z.string().min(1, "Name is required."),
-    email: z.string().email("Invalid email address."),
+    email: z.union([z.literal(''), z.string().email("Invalid email address.")]).optional(),
     company: z.string().optional(),
-    phone: z.string().min(1, "Phone number is required.").regex(/^[+\d][\d\s\-().]{6,19}$/, "Enter a valid phone number."),
+    phone: z.union([z.literal(''), z.string().regex(/^[+\d][\d\s\-().]{6,19}$/, "Enter a valid phone number.")]).optional(),
     billingAddress: z.string().optional(),
     shippingAddress: z.string().optional(),
+    customerCode: z.string().optional(),
+    taxVatNumber: z.string().optional(),
+    paymentTerms: z.string().optional(),
+    creditLimit: z.coerce.number().min(0).optional(),
+    salesperson: z.string().optional(),
+    notes: z.string().optional(),
 });
 
 type CustomerFormData = z.infer<typeof customerSchema>;
@@ -89,6 +105,11 @@ export default function CustomersPage() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    // Cashiers can add customers at the register (Sales & Customers grants them 'create'
+    // in rbac.ts) but can't edit/delete existing records — that stays admin/manager only.
+    const canAdd = canManage || user?.role === 'cashier';
+    const columnVisibility = useColumnVisibility('customers', CUSTOMERS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const customersQuery = useMemo(() => {
         // Firestore does not support sorting by 'tier' directly with an index if it's based on a transform.
@@ -144,16 +165,19 @@ export default function CustomersPage() {
         if (customer) {
             form.reset(customer);
         } else {
-            form.reset({ name: '', email: '', company: '', phone: '', billingAddress: '', shippingAddress: '' });
+            form.reset({
+                name: '', email: '', company: '', phone: '', billingAddress: '', shippingAddress: '',
+                customerCode: '', taxVatNumber: '', paymentTerms: '', creditLimit: undefined, salesperson: '', notes: '',
+            });
         }
         setIsFormOpen(true);
     };
 
-    usePageKeyboard({ onNew: canManage ? () => handleOpenForm() : undefined });
+    usePageKeyboard({ onNew: canAdd ? () => handleOpenForm() : undefined });
 
     const onSubmit = (data: CustomerFormData) => {
-        // Email uniqueness check
-        const emailExists = customers.some(c => c.email.toLowerCase() === data.email.toLowerCase() && c.id !== customerToEdit?.id);
+        // Email uniqueness check (only when an email was provided)
+        const emailExists = !!data.email && customers.some(c => c.email?.toLowerCase() === data.email!.toLowerCase() && c.id !== customerToEdit?.id);
         if (emailExists) {
             toast({ variant: 'destructive', title: 'Email Already Exists', description: 'A customer with this email already exists.' });
             return;
@@ -198,7 +222,7 @@ export default function CustomersPage() {
             const lowercasedFilter = debouncedSearch.toLowerCase();
             filtered = filtered.filter(customer =>
                 customer.name.toLowerCase().includes(lowercasedFilter) ||
-                customer.email.toLowerCase().includes(lowercasedFilter)
+                (customer.email ?? '').toLowerCase().includes(lowercasedFilter)
             );
         }
 
@@ -241,6 +265,7 @@ export default function CustomersPage() {
                                 { key: 'loyaltyPoints' as const, label: 'Loyalty Points' },
                             ]}
                         />
+                        <ColumnVisibilityMenu visibility={columnVisibility} />
                         {canManage && (
                             <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
                                 <Link href="/settings/import">
@@ -249,7 +274,7 @@ export default function CustomersPage() {
                                 </Link>
                             </Button>
                         )}
-                        {canManage && (
+                        {canAdd && (
                             <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => handleOpenForm()}>
                                 <PlusCircle className="h-4 w-4" />
                                 Add Customer
@@ -263,9 +288,9 @@ export default function CustomersPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('name')}>Customer <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('tier')}>Tier <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="hidden sm:table-cell"><Button variant="ghost" onClick={() => handleSort('loyaltyPoints')}>Loyalty Points <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="hidden md:table-cell">Email</TableHead>
+                                    {isVisible('tier') && <TableHead><Button variant="ghost" onClick={() => handleSort('tier')}>Tier <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('loyaltyPoints') && <TableHead className="hidden sm:table-cell"><Button variant="ghost" onClick={() => handleSort('loyaltyPoints')}>Loyalty Points <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('email') && <TableHead className="hidden md:table-cell">Email</TableHead>}
                                     <TableHead>
                                         <span className="sr-only">Actions</span>
                                     </TableHead>
@@ -301,16 +326,18 @@ export default function CustomersPage() {
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell>
-                                            <Badge 
-                                                variant={tierVariant[customer.tier || 'Bronze']} 
-                                                className={customer.tier === 'Gold' ? 'border-amber-500 text-amber-600' : ''}
-                                            >
-                                                {customer.tier || 'Bronze'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="hidden sm:table-cell">{customer.loyaltyPoints || 0}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{customer.email}</TableCell>
+                                        {isVisible('tier') && (
+                                            <TableCell>
+                                                <Badge
+                                                    variant={tierVariant[customer.tier || 'Bronze']}
+                                                    className={customer.tier === 'Gold' ? 'border-amber-500 text-amber-600' : ''}
+                                                >
+                                                    {customer.tier || 'Bronze'}
+                                                </Badge>
+                                            </TableCell>
+                                        )}
+                                        {isVisible('loyaltyPoints') && <TableCell className="hidden sm:table-cell">{customer.loyaltyPoints || 0}</TableCell>}
+                                        {isVisible('email') && <TableCell className="hidden md:table-cell">{customer.email}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -360,10 +387,10 @@ export default function CustomersPage() {
                                 <FormItem><FormLabel>Company</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
                             <FormField control={form.control} name="email" render={({ field }) => (
-                                <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>Email <span className="text-muted-foreground font-normal">(optional)</span></FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
                             <FormField control={form.control} name="phone" render={({ field }) => (
-                                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>Phone <span className="text-muted-foreground font-normal">(optional)</span></FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
                             <FormField control={form.control} name="billingAddress" render={({ field }) => (
                                 <FormItem><FormLabel>Billing Address</FormLabel><FormControl><Textarea placeholder="Enter billing address" {...field} /></FormControl><FormMessage /></FormItem>
@@ -371,22 +398,34 @@ export default function CustomersPage() {
                              <FormField control={form.control} name="shippingAddress" render={({ field }) => (
                                 <FormItem><FormLabel>Shipping Address</FormLabel><FormControl><Textarea placeholder="Enter shipping address" {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
+                            <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Additional details (optional)</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={form.control} name="customerCode" render={({ field }) => (
+                                        <FormItem><FormLabel>Customer Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="taxVatNumber" render={({ field }) => (
+                                        <FormItem><FormLabel>Tax / VAT Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                                        <FormItem><FormLabel>Payment Terms</FormLabel><FormControl><Input placeholder="e.g. Net 30" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="creditLimit" render={({ field }) => (
+                                        <FormItem><FormLabel>Credit Limit</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="salesperson" render={({ field }) => (
+                                        <FormItem><FormLabel>Salesperson</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
+                                <FormField control={form.control} name="notes" render={({ field }) => (
+                                    <FormItem><FormLabel>Notes</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
                             <CustomFieldsFormSection entity="customer" value={customData} onChange={setCustomData} />
                             <DialogFooter className="pt-4">
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button type="button">{customerToEdit ? 'Save Changes' : 'Add Customer'}</Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={form.handleSubmit(onSubmit)}>Confirm</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
+                                <Button type="submit">
+                                    {customerToEdit ? 'Save Changes' : 'Add Customer'}
+                                </Button>
                             </DialogFooter>
                         </form>
                     </Form>
@@ -445,7 +484,7 @@ export default function CustomersPage() {
                                             <TableRow key={invoice.id}>
                                                 <TableCell className="font-medium">{invoice.id}</TableCell>
                                                 <TableCell>{new Date(invoice.date).toLocaleDateString()}</TableCell>
-                                                <TableCell>{currencySymbol} {invoice.amount.toFixed(2)}</TableCell>
+                                                <TableCell>{currencySymbol} {formatNumber(invoice.amount)}</TableCell>
                                                 <TableCell>
                                                     <StatusBadge status={invoice.status} />
                                                 </TableCell>

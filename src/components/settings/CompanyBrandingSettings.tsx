@@ -34,7 +34,10 @@ export default function CompanyBrandingSettings() {
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        setLocal(themeSettings);
+        // 'minimal' was renamed to 'lined' (boxed/ruled redesign) — migrate any
+        // tenant doc still holding the old value so the picker highlights correctly.
+        const template = themeSettings.invoiceTemplate as string | undefined;
+        setLocal(template === 'minimal' ? { ...themeSettings, invoiceTemplate: 'lined' } : themeSettings);
     }, [themeSettings]);
 
     const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +106,11 @@ export default function CompanyBrandingSettings() {
                         <Label htmlFor="tax-registration">Tax Registration Number</Label>
                         <Input id="tax-registration" value={local.taxRegistrationNumber ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, taxRegistrationNumber: e.target.value }))} />
                     </div>
+                    <div className="grid w-full items-center gap-2">
+                        <Label htmlFor="company-reg-number">Reg Number</Label>
+                        <Input id="company-reg-number" placeholder="Business registration number" value={local.companyRegNumber ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, companyRegNumber: e.target.value }))} />
+                        <p className="text-xs text-muted-foreground">Printed on invoices and receipts as “Reg No”.</p>
+                    </div>
                 </div>
                 <div className="grid w-full max-w-md items-center gap-2">
                     <Label htmlFor="company-address">Company Address</Label>
@@ -153,7 +161,7 @@ export default function CompanyBrandingSettings() {
                                 {([
                                     { id: 'classic', label: 'Classic', desc: 'Logo left, bold header' },
                                     { id: 'modern', label: 'Modern', desc: 'Color banner header' },
-                                    { id: 'minimal', label: 'Minimal', desc: 'Clean typographic' },
+                                    { id: 'lined', label: 'Lined', desc: 'Boxed, fully ruled table' },
                                     { id: 'thermal-receipt', label: 'POS Receipt', desc: '80mm thermal style' },
                                 ] as const).map(t => (
                                     <button
@@ -192,11 +200,16 @@ export default function CompanyBrandingSettings() {
                                         </div>
                                     </div>
                                 )}
-                                {(local.invoiceTemplate ?? 'classic') === 'minimal' && (
-                                    <div className="space-y-2 border-b pb-2">
-                                        <p className="font-light tracking-wider text-gray-500">{local.companyName || 'Company'}</p>
-                                        <p className="text-[10px] text-muted-foreground">Address</p>
-                                        <p className="text-right font-light tracking-[0.15em] text-gray-500">INVOICE</p>
+                                {(local.invoiceTemplate ?? 'classic') === 'lined' && (
+                                    <div className="border-2 border-black">
+                                        <div className="flex justify-between p-1.5 border-b-2 border-black">
+                                            <p className="font-bold">{local.companyName || 'Company'}</p>
+                                            <p className="font-bold">INVOICE</p>
+                                        </div>
+                                        <div className="grid grid-cols-2 text-[10px]">
+                                            <p className="p-1 border-r border-black">Item x1</p>
+                                            <p className="p-1 text-right">$0.00</p>
+                                        </div>
                                     </div>
                                 )}
                                 {(local.invoiceTemplate ?? 'classic') === 'thermal-receipt' && (

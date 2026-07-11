@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Header from '@/components/Header';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -10,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { Download } from 'lucide-react';
-import { addMoney } from '@/lib/money';
+import { addMoney, formatNumber } from '@/lib/money';
 
 type BankRow = { date: string; description: string; amount: number };
 
@@ -65,6 +66,7 @@ function BankRecInner() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Bank Reconciliation" />
+      <Breadcrumb items={[{ label: 'Finance', href: '/accounting' }, { label: 'Bank Reconciliation' }]} />
       <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         <Card>
           <CardHeader><CardTitle className="text-base">Import bank statement</CardTitle><CardDescription>Upload a CSV; rows are matched against paid invoices by amount.</CardDescription></CardHeader>
@@ -78,7 +80,7 @@ function BankRecInner() {
             {error && <p className="text-sm text-destructive">{error}</p>}
             {rows.length > 0 && (
               <div className="flex flex-wrap gap-4 text-sm">
-                <span className="pill pill-info">Statement total: {currencySymbol}{statementTotal.toFixed(2)}</span>
+                <span className="pill pill-info">Statement total: {currencySymbol}{formatNumber(statementTotal)}</span>
                 <span className="pill pill-success">{matchedCount} matched</span>
                 <span className="pill pill-warning">{rows.length - matchedCount} unmatched</span>
               </div>
@@ -95,7 +97,7 @@ function BankRecInner() {
                   <TableRow key={`matched-${i}`}>
                     <TableCell>{m.date}</TableCell>
                     <TableCell>{m.description}</TableCell>
-                    <TableCell className="text-right">{currencySymbol}{m.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{currencySymbol}{formatNumber(m.amount)}</TableCell>
                     <TableCell><Badge variant={m.matched ? 'default' : 'secondary'}>{m.matched ? 'Matched' : 'Review'}</Badge></TableCell>
                   </TableRow>
                 ))}</TableBody>

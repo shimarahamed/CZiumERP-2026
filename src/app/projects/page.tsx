@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import Header from "@/components/Header";
 import { useToast } from "@/hooks/use-toast";
+import { formatNumber } from '@/lib/money';
 import { useAppContext } from '@/context/AppContext';
 import type { Project, ProjectStatus, Employee } from '@/types';
 import { PlusCircle, Calendar, Flag, User, Users } from '@/components/icons';
@@ -158,7 +159,7 @@ export default function ProjectsPage() {
                                         <div>
                                             <div className="flex justify-between text-sm mb-1">
                                                 <span>Progress</span>
-                                                <span className="font-semibold">{progress.toFixed(0)}%</span>
+                                                <span className="font-semibold">{formatNumber(progress, 0, 0)}%</span>
                                             </div>
                                             <Progress value={progress} />
                                         </div>

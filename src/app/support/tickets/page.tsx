@@ -30,6 +30,18 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
 import { sendDepartmentEmail } from '@/lib/email';
 import { analyzeTicket } from '@/ai/flows/ticket-analysis';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const TICKETS_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'ID' },
+    { id: 'subject', label: 'Subject', locked: true },
+    { id: 'requester', label: 'Requester' },
+    { id: 'assignee', label: 'Assigned To' },
+    { id: 'group', label: 'Group' },
+    { id: 'category', label: 'Category' },
+    { id: 'status', label: 'Status' },
+];
 
 const ticketSchema = z.object({
   title: z.string().min(1, "Title is required."),
@@ -75,6 +87,8 @@ export default function SupportTicketsPage() {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const columnVisibility = useColumnVisibility('support-tickets', TICKETS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<TicketFormData>({
         resolver: zodResolver(ticketSchema),
@@ -268,6 +282,7 @@ export default function SupportTicketsPage() {
                                         <SelectItem value="urgent">Urgent</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
                                 <Button size="sm" className="gap-1 flex-shrink-0" onClick={() => setIsFormOpen(true)}>
                                     <PlusCircle className="h-4 w-4" /> Create Ticket
                                 </Button>
@@ -278,13 +293,13 @@ export default function SupportTicketsPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-[80px]">ID</TableHead>
+                                    {isVisible('id') && <TableHead className="w-[80px]">ID</TableHead>}
                                     <TableHead>Subject</TableHead>
-                                    <TableHead className="hidden md:table-cell">Requester</TableHead>
-                                    <TableHead className="hidden md:table-cell">Assigned To</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Group</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Category</TableHead>
-                                    <TableHead>Status</TableHead>
+                                    {isVisible('requester') && <TableHead className="hidden md:table-cell">Requester</TableHead>}
+                                    {isVisible('assignee') && <TableHead className="hidden md:table-cell">Assigned To</TableHead>}
+                                    {isVisible('group') && <TableHead className="hidden lg:table-cell">Group</TableHead>}
+                                    {isVisible('category') && <TableHead className="hidden lg:table-cell">Category</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -301,15 +316,17 @@ export default function SupportTicketsPage() {
                                 )}
                                 {filteredTickets.map(ticket => (
                                     <TableRow key={ticket.id} onClick={() => setViewingTicket(ticket)} className="cursor-pointer">
-                                        <TableCell className="font-mono text-sm">#{ticket.id}</TableCell>
+                                        {isVisible('id') && <TableCell className="font-mono text-sm">#{ticket.id}</TableCell>}
                                         <TableCell className="font-medium max-w-[200px] lg:max-w-[350px] truncate">{ticket.title}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{ticket.reporterName}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{ticket.assigneeName || 'Unassigned'}</TableCell>
-                                        <TableCell className="hidden lg:table-cell">{ticket.group}</TableCell>
-                                        <TableCell className="hidden lg:table-cell">{ticket.category}</TableCell>
+                                        {isVisible('requester') && <TableCell className="hidden md:table-cell">{ticket.reporterName}</TableCell>}
+                                        {isVisible('assignee') && <TableCell className="hidden md:table-cell">{ticket.assigneeName || 'Unassigned'}</TableCell>}
+                                        {isVisible('group') && <TableCell className="hidden lg:table-cell">{ticket.group}</TableCell>}
+                                        {isVisible('category') && <TableCell className="hidden lg:table-cell">{ticket.category}</TableCell>}
+                                        {isVisible('status') && (
                                         <TableCell>
                                             <StatusBadge status={ticket.status} />
                                         </TableCell>
+                                        )}
                                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -357,7 +374,7 @@ export default function SupportTicketsPage() {
                                 Get AI Suggestions
                             </Button>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="category" render={({ field }) => (
                                     <FormItem><FormLabel>Category</FormLabel><FormControl><Input {...field} placeholder="e.g. Hardware, Software" /></FormControl><FormMessage /></FormItem>
                                 )}/>
@@ -365,7 +382,7 @@ export default function SupportTicketsPage() {
                                     <FormItem><FormLabel>Group</FormLabel><FormControl><Input {...field} placeholder="e.g. IT Support, Operations" /></FormControl><FormMessage /></FormItem>
                                 )}/>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                <FormField control={form.control} name="priority" render={({ field }) => (
                                     <FormItem><FormLabel>Priority</FormLabel>
                                         <Select onValueChange={field.onChange} value={field.value}>

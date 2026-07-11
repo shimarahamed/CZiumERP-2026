@@ -16,6 +16,17 @@ import type { Invoice } from '@/types';
 import { Mail, DollarSign, FileWarning, CalendarClock, Loader2 } from '@/components/icons';
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { sendDepartmentEmail } from '@/lib/email';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+import { formatNumber } from '@/lib/money';
+
+const OVERDUE_INVOICES_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'Invoice ID', locked: true },
+    { id: 'customer', label: 'Customer' },
+    { id: 'dueDate', label: 'Due Date' },
+    { id: 'amountDue', label: 'Amount Due' },
+    { id: 'daysOverdue', label: 'Days Overdue' },
+];
 
 const statusVariant: { [key in Invoice['status']]: 'default' | 'secondary' | 'destructive' | 'outline' } = {
     paid: 'default',
@@ -30,6 +41,8 @@ function ReceivablesPageInner() {
     const { invoices, currencySymbol, customersMap, isDataLoaded, user, companyName, smtpConfigList, emailTemplates, setEmailLogs } = useAppContext();
     const { toast } = useToast();
     const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
+    const columnVisibility = useColumnVisibility('overdue-invoices', OVERDUE_INVOICES_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const handleSendReminder = async (invoice: Invoice, customerEmail: string, customerName: string) => {
         setSendingReminderFor(invoice.id);
@@ -39,7 +52,7 @@ function ReceivablesPageInner() {
                 'Finance',
                 'payment-reminder',
                 customerEmail,
-                { customerName, invoiceId: invoice.id, amount: `${currencySymbol}${invoice.amount.toFixed(2)}`, companyName },
+                { customerName, invoiceId: invoice.id, amount: `${currencySymbol}${formatNumber(invoice.amount)}`, companyName },
                 user?.name ?? 'system'
             );
             toast({ title: 'Reminder Sent', description: `Payment reminder sent to ${customerEmail}.` });
@@ -120,18 +133,23 @@ function ReceivablesPageInner() {
                     </Card>
                     <Card>
                         <CardHeader>
-                            <CardTitle>Overdue Invoices</CardTitle>
-                            <CardDescription>All invoices that are past their due date.</CardDescription>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                <div>
+                                    <CardTitle>Overdue Invoices</CardTitle>
+                                    <CardDescription>All invoices that are past their due date.</CardDescription>
+                                </div>
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
+                            </div>
                         </CardHeader>
                         <CardContent>
                              <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Invoice ID</TableHead>
-                                        <TableHead>Customer</TableHead>
-                                        <TableHead>Due Date</TableHead>
-                                        <TableHead className="text-right">Amount Due</TableHead>
-                                        <TableHead className="text-right">Days Overdue</TableHead>
+                                        {isVisible('customer') && <TableHead>Customer</TableHead>}
+                                        {isVisible('dueDate') && <TableHead>Due Date</TableHead>}
+                                        {isVisible('amountDue') && <TableHead className="text-right">Amount Due</TableHead>}
+                                        {isVisible('daysOverdue') && <TableHead className="text-right">Days Overdue</TableHead>}
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -144,17 +162,17 @@ function ReceivablesPageInner() {
                                         return (
                                             <TableRow key={invoice.id}>
                                                 <TableCell className="font-medium">{invoice.id}</TableCell>
-                                                <TableCell>{invoice.customerName}</TableCell>
-                                                <TableCell>{format(parseISO(invoice.date), 'PPP')}</TableCell>
-                                                <TableCell className="text-right">{currencySymbol}{invoice.amount.toFixed(2)}</TableCell>
-                                                <TableCell className="text-right text-destructive font-medium">{differenceInDays(new Date(), parseISO(invoice.date))}</TableCell>
+                                                {isVisible('customer') && <TableCell>{invoice.customerName}</TableCell>}
+                                                {isVisible('dueDate') && <TableCell>{format(parseISO(invoice.date), 'PPP')}</TableCell>}
+                                                {isVisible('amountDue') && <TableCell className="text-right">{currencySymbol}{formatNumber(invoice.amount)}</TableCell>}
+                                                {isVisible('daysOverdue') && <TableCell className="text-right text-destructive font-medium">{differenceInDays(new Date(), parseISO(invoice.date))}</TableCell>}
                                                 <TableCell className="text-right">
                                                     {customer?.email && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
                                                             disabled={sendingReminderFor === invoice.id}
-                                                            onClick={() => handleSendReminder(invoice, customer.email, customer.name)}
+                                                            onClick={() => handleSendReminder(invoice, customer.email!, customer.name)}
                                                         >
                                                            {sendingReminderFor === invoice.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Mail className="mr-2 h-4 w-4"/>} Send Reminder
                                                         </Button>
@@ -179,7 +197,7 @@ const AgingCard = ({ title, amount, count, currency, icon: Icon }: { title: stri
     <div className="p-4 rounded-lg bg-secondary/50 text-center">
         <Icon className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <p className="text-xl font-bold">{currency}{amount.toFixed(2)}</p>
+        <p className="text-xl font-bold">{currency}{formatNumber(amount)}</p>
         <p className="text-xs text-muted-foreground">{count} invoice(s)</p>
     </div>
 );

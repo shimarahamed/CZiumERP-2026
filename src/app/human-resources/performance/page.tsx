@@ -24,6 +24,16 @@ import { format } from 'date-fns';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const PERFORMANCE_COLUMNS: ColumnDef[] = [
+    { id: 'employee', label: 'Employee', locked: true },
+    { id: 'reviewer', label: 'Reviewer' },
+    { id: 'date', label: 'Date' },
+    { id: 'rating', label: 'Rating' },
+    { id: 'comments', label: 'Comments' },
+];
 
 const reviewSchema = z.object({
     employeeId: z.string().min(1, "Please select an employee."),
@@ -54,7 +64,9 @@ function PerformancePageInner() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
-    
+    const columnVisibility = useColumnVisibility('performance-reviews', PERFORMANCE_COLUMNS);
+    const { isVisible } = columnVisibility;
+
      const filteredReviews = useMemo(() => {
         if (!searchTerm) return performanceReviews;
         const lowercasedFilter = searchTerm.toLowerCase();
@@ -108,6 +120,7 @@ function PerformancePageInner() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => setIsFormOpen(true)}>
                         <PlusCircle className="h-4 w-4" /> Add Review
                     </Button>
@@ -118,10 +131,10 @@ function PerformancePageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Employee</TableHead>
-                                    <TableHead>Reviewer</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Rating</TableHead>
-                                    <TableHead>Comments</TableHead>
+                                    {isVisible('reviewer') && <TableHead>Reviewer</TableHead>}
+                                    {isVisible('date') && <TableHead>Date</TableHead>}
+                                    {isVisible('rating') && <TableHead>Rating</TableHead>}
+                                    {isVisible('comments') && <TableHead>Comments</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             {!isDataLoaded ? (
@@ -131,10 +144,10 @@ function PerformancePageInner() {
                                 {filteredReviews.map(review => (
                                     <TableRow key={review.id}>
                                         <TableCell className="font-medium">{review.employeeName}</TableCell>
-                                        <TableCell>{review.reviewerName}</TableCell>
-                                        <TableCell>{format(new Date(review.date), 'PPP')}</TableCell>
-                                        <TableCell><RatingStars rating={review.rating} /></TableCell>
-                                        <TableCell className="max-w-sm truncate">{review.comments}</TableCell>
+                                        {isVisible('reviewer') && <TableCell>{review.reviewerName}</TableCell>}
+                                        {isVisible('date') && <TableCell>{format(new Date(review.date), 'PPP')}</TableCell>}
+                                        {isVisible('rating') && <TableCell><RatingStars rating={review.rating} /></TableCell>}
+                                        {isVisible('comments') && <TableCell className="max-w-sm truncate">{review.comments}</TableCell>}
                                     </TableRow>
                                 ))}
                             </TableBody>

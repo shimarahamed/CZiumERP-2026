@@ -31,6 +31,16 @@ import ITAssetDetail from '@/components/ITAssetDetail';
 import { Combobox } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
 import { TableSkeleton } from '@/components/TableSkeleton';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const IT_ASSETS_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Asset Name', locked: true },
+  { id: 'category', label: 'Category' },
+  { id: 'status', label: 'Status' },
+  { id: 'location', label: 'Location' },
+  { id: 'assignedTo', label: 'Assigned To' },
+];
 
 const itAssetSchema = z.object({
   // Core
@@ -92,6 +102,8 @@ export default function ITAssetsPage() {
     });
     
     const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+    const columnVisibility = useColumnVisibility('it-assets', IT_ASSETS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const employeeOptions = useMemo(() => 
         [{ label: 'Unassigned', value: 'unassigned' }, ...employees.map(e => ({ label: e.name, value: e.id }))]
@@ -232,6 +244,7 @@ export default function ITAssetsPage() {
     return (
         <div className="flex flex-col h-full">
             <Header title="IT Asset Management" />
+            <Breadcrumb items={[{ label: 'Service Desk', href: '/support' }, { label: 'IT Assets' }]} />
             <main className="flex-1 overflow-auto p-4 md:p-6">
                 <Card>
                     <CardHeader>
@@ -243,35 +256,34 @@ export default function ITAssetsPage() {
                             <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                                 <div className="relative flex-grow">
                                     <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-                                    <Input 
-                                        type="search" 
-                                        placeholder="Search by name, S/N, category..." 
+                                    <Input
+                                        type="search"
+                                        placeholder="Search by name, S/N, category..."
                                         className="pl-8 sm:w-[300px]"
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                     />
                                 </div>
+                                <Select value={filters.status} onValueChange={(value) => handleFilterChange('status', value as AssetStatus | 'all')}>
+                                    <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                                    <SelectContent><SelectItem value="all">All Statuses</SelectItem>{Object.keys(statusVariant).map(status => (<SelectItem key={status} value={status} className="capitalize">{status.replace('-', ' ')}</SelectItem>))}</SelectContent>
+                                </Select>
                                 <Popover>
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="gap-2">
-                                            <Filter className="h-4 w-4" /> Filter
+                                            <Filter className="h-4 w-4" /> More Filters
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-80">
                                         <div className="grid gap-4">
                                             <div className="space-y-2"><h4 className="font-medium leading-none">Filters</h4><p className="text-sm text-muted-foreground">Set additional filters for the asset list.</p></div>
                                             <div className="grid gap-2">
-                                                <div className="grid grid-cols-3 items-center gap-4"><Label htmlFor="filter-status">Status</Label>
-                                                    <Select value={filters.status} onValueChange={(value) => handleFilterChange('status', value as AssetStatus | 'all')}>
-                                                        <SelectTrigger className="col-span-2 h-8"><SelectValue /></SelectTrigger>
-                                                        <SelectContent><SelectItem value="all">All</SelectItem>{Object.keys(statusVariant).map(status => (<SelectItem key={status} value={status} className="capitalize">{status.replace('-', ' ')}</SelectItem>))}</SelectContent>
-                                                    </Select>
-                                                </div>
                                                 <div className="grid grid-cols-3 items-center gap-4"><Label htmlFor="filter-location">Location</Label><Input id="filter-location" value={filters.location} onChange={(e) => handleFilterChange('location', e.target.value)} className="col-span-2 h-8" /></div>
                                             </div>
                                         </div>
                                     </PopoverContent>
                                 </Popover>
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
                                 <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => handleOpenForm()}>
                                     <PlusCircle className="h-4 w-4" /> Add IT Asset
                                 </Button>
@@ -283,10 +295,10 @@ export default function ITAssetsPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('name')}>Asset Name <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('category')}>Category <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('location')}>Location <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('assignedUserName')}>Assigned To <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
+                                    {isVisible('category') && <TableHead><Button variant="ghost" onClick={() => handleSort('category')}>Category <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('status') && <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('location') && <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('location')}>Location <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('assignedTo') && <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('assignedUserName')}>Assigned To <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -299,7 +311,8 @@ export default function ITAssetsPage() {
                                     return (
                                         <TableRow key={asset.id} className="cursor-pointer" onClick={() => setAssetToView(asset)}>
                                             <TableCell className="font-medium">{asset.name}<div className="text-sm text-muted-foreground md:hidden">{asset.category}</div></TableCell>
-                                            <TableCell className="hidden md:table-cell">{asset.category}</TableCell>
+                                            {isVisible('category') && <TableCell className="hidden md:table-cell">{asset.category}</TableCell>}
+                                            {isVisible('status') && (
                                             <TableCell>
                                                 <Badge
                                                     variant={isMaintenance ? 'outline' : statusVariant[asset.status]}
@@ -308,8 +321,9 @@ export default function ITAssetsPage() {
                                                     {asset.status.replace('-', ' ')}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="hidden md:table-cell">{asset.location}</TableCell>
-                                            <TableCell className="hidden md:table-cell">{asset.assignedUserName}</TableCell>
+                                            )}
+                                            {isVisible('location') && <TableCell className="hidden md:table-cell">{asset.location}</TableCell>}
+                                            {isVisible('assignedTo') && <TableCell className="hidden md:table-cell">{asset.assignedUserName}</TableCell>}
                                             <TableCell onClick={(e) => e.stopPropagation()}>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button aria-haspopup="true" size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Toggle menu</span></Button></DropdownMenuTrigger>
@@ -404,13 +418,7 @@ export default function ITAssetsPage() {
                            </div>
                             
                             <DialogFooter className="pt-4">
-                                 <AlertDialog>
-                                     <AlertDialogTrigger asChild><Button type="button">{assetToEdit ? 'Save Changes' : 'Add Asset'}</Button></AlertDialogTrigger>
-                                     <AlertDialogContent>
-                                         <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will save the changes to the asset.</AlertDialogDescription></AlertDialogHeader>
-                                         <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={form.handleSubmit(processSubmit)}>Confirm</AlertDialogAction></AlertDialogFooter>
-                                     </AlertDialogContent>
-                                 </AlertDialog>
+                                <Button type="submit">{assetToEdit ? 'Save Changes' : 'Add Asset'}</Button>
                             </DialogFooter>
                         </form>
                     </Form>

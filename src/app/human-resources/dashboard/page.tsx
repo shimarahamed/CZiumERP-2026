@@ -4,6 +4,7 @@
 import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Header from "@/components/Header";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { useAppContext } from "@/context/AppContext";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -65,6 +66,7 @@ export default function HRDashboardPage() {
     return (
         <div className="flex flex-col h-full">
             <Header title="Human Resources Dashboard" />
+            <Breadcrumb items={[{ label: 'Human Resources', href: '/human-resources/dashboard' }, { label: 'Dashboard' }]} />
             <main className="flex-1 overflow-auto p-4 md:p-6">
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
@@ -100,8 +102,9 @@ export default function HRDashboardPage() {
                         </CardContent>
                     </Card>
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Today&apos;s Attendance</CardTitle>
+                            <UserCheck className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent className="flex justify-around items-center">
                             <div className="text-center">

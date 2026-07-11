@@ -47,7 +47,7 @@ export default function GanttChart({ tasks }: GanttChartProps) {
     }
 
     return (
-        <div className="w-full">
+        <div className="w-full max-w-full overflow-x-auto">
             <div className="flex gap-2 mb-4">
                 <button className="text-sm px-2 py-1 border rounded" onClick={() => setView(ViewMode.Day)}>Day</button>
                 <button className="text-sm px-2 py-1 border rounded" onClick={() => setView(ViewMode.Week)}>Week</button>

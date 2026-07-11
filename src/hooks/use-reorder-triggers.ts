@@ -7,7 +7,10 @@ import { addDays } from 'date-fns/addDays';
 
 /**
  * Watches inventory levels and auto-creates draft POs when stock ≤ reorderThreshold.
- * Only fires for admin/manager roles, at most once per product per session.
+ * Only fires for admin/manager roles. Dedup is against `purchaseOrders` itself (any
+ * open PO — pending/pending-approval/ordered — already covering that product+vendor),
+ * not an in-memory ref, since the ref resets on every remount (tab, refresh, nav) and
+ * previously let the same low-stock item spawn a fresh draft PO each time.
  */
 export function useReorderTriggers() {
   const {
@@ -21,11 +24,19 @@ export function useReorderTriggers() {
     if (user?.role !== 'admin' && user?.role !== 'manager') return;
     if (products.length === 0) return;
 
+    const openStatuses = new Set(['pending', 'pending-approval', 'ordered']);
+    const productsWithOpenPO = new Set(
+      purchaseOrders
+        .filter(po => openStatuses.has(po.status))
+        .flatMap(po => po.items.map(item => item.productId))
+    );
+
     const lowStock = products.filter(p =>
       typeof p.reorderThreshold === 'number' &&
       p.stock <= p.reorderThreshold &&
       p.vendorId &&
-      !triggeredRef.current.has(p.id)
+      !triggeredRef.current.has(p.id) &&
+      !productsWithOpenPO.has(p.id)
     );
 
     if (lowStock.length === 0) return;

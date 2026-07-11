@@ -36,6 +36,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const PROJECT_TASKS_COLUMNS: ColumnDef[] = [
+  { id: 'task', label: 'Task', locked: true },
+  { id: 'assignee', label: 'Assignee' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'status', label: 'Status' },
+];
 
 const GanttChart = dynamic(() => import('@/components/GanttChart'), {
   ssr: false,
@@ -121,6 +130,8 @@ export default function ProjectDetailPage() {
     const teamMembers = useMemo(() => project ? project.teamIds.map(id => employeesMap.get(id)).filter(Boolean) as Employee[] : [], [project, employeesMap]);
     
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const taskColumnVisibility = useColumnVisibility('project-tasks', PROJECT_TASKS_COLUMNS);
+    const { isVisible: isTaskColVisible } = taskColumnVisibility;
 
     const actualCost = useMemo(() => {
         return projectTasks
@@ -323,7 +334,10 @@ export default function ProjectDetailPage() {
                                 <CardTitle>Tasks</CardTitle>
                                 <CardDescription>All tasks associated with this project.</CardDescription>
                                 </div>
-                                {canManage && <Button size="sm" onClick={() => handleOpenTaskForm(null)}><PlusCircle className="mr-2 h-4 w-4"/> Add Task</Button>}
+                                <div className="flex items-center gap-2">
+                                    <ColumnVisibilityMenu visibility={taskColumnVisibility} />
+                                    {canManage && <Button size="sm" onClick={() => handleOpenTaskForm(null)}><PlusCircle className="mr-2 h-4 w-4"/> Add Task</Button>}
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <Tabs defaultValue="list">
@@ -336,9 +350,9 @@ export default function ProjectDetailPage() {
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead>Task</TableHead>
-                                                    <TableHead>Assignee</TableHead>
-                                                    <TableHead>Timeline</TableHead>
-                                                    <TableHead>Status</TableHead>
+                                                    {isTaskColVisible('assignee') && <TableHead>Assignee</TableHead>}
+                                                    {isTaskColVisible('timeline') && <TableHead>Timeline</TableHead>}
+                                                    {isTaskColVisible('status') && <TableHead>Status</TableHead>}
                                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                                 </TableRow>
                                             </TableHeader>
@@ -353,8 +367,9 @@ export default function ProjectDetailPage() {
                                                                     <Badge variant={priorityVariant[task.priority]} className="capitalize w-fit mt-1">{task.priority}</Badge>
                                                                 </div>
                                                             </TableCell>
-                                                            <TableCell>{assignee?.name || 'Unassigned'}</TableCell>
-                                                            <TableCell>{task.startDate && task.endDate ? `${format(parseISO(task.startDate), 'MMM d')} - ${format(parseISO(task.endDate), 'MMM d, yyyy')}` : 'N/A'}</TableCell>
+                                                            {isTaskColVisible('assignee') && <TableCell>{assignee?.name || 'Unassigned'}</TableCell>}
+                                                            {isTaskColVisible('timeline') && <TableCell>{task.startDate && task.endDate ? `${format(parseISO(task.startDate), 'MMM d')} - ${format(parseISO(task.endDate), 'MMM d, yyyy')}` : 'N/A'}</TableCell>}
+                                                            {isTaskColVisible('status') && (
                                                             <TableCell>
                                                                 <Select value={task.status} onValueChange={(value: TaskStatus) => handleTaskStatusChange(task.id, value)} disabled={!canManage}>
                                                                     <SelectTrigger className="h-8 w-[120px]">
@@ -367,6 +382,7 @@ export default function ProjectDetailPage() {
                                                                     </SelectContent>
                                                                 </Select>
                                                             </TableCell>
+                                                            )}
                                                             <TableCell>
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>

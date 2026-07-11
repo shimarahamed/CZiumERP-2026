@@ -31,6 +31,43 @@ import { format, parseISO } from 'date-fns';
 import { ArrowLeft, Mail, MoreHorizontal, Pencil, PlusCircle, Send, Trash2, UserCheck, UserX } from '@/components/icons';
 import { buildOnboardingEmail, buildOffboardingEmail, isSmtpConfigured, sendHrEmail } from '@/lib/hr-email';
 import { EMPLOYMENT_TYPES, EMPLOYMENT_STATUSES, statusBadgeVariant, stripUndefinedDeep } from '@/lib/hr';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const IDENTITY_DOCS_COLUMNS: ColumnDef[] = [
+  { id: 'type', label: 'Type', locked: true },
+  { id: 'number', label: 'Number' },
+  { id: 'issued', label: 'Issued' },
+  { id: 'expires', label: 'Expires' },
+];
+
+const ASSETS_COLUMNS: ColumnDef[] = [
+  { id: 'asset', label: 'Asset', locked: true },
+  { id: 'serialNumber', label: 'Serial Number' },
+  { id: 'dateIssued', label: 'Date Issued' },
+  { id: 'dateReturned', label: 'Date Returned' },
+];
+
+const IT_ACCOUNTS_COLUMNS: ColumnDef[] = [
+  { id: 'system', label: 'System', locked: true },
+  { id: 'username', label: 'Username' },
+  { id: 'mfa', label: 'MFA' },
+  { id: 'status', label: 'Status' },
+];
+
+const PERFORMANCE_COLUMNS: ColumnDef[] = [
+  { id: 'date', label: 'Date' },
+  { id: 'type', label: 'Type' },
+  { id: 'title', label: 'Title', locked: true },
+  { id: 'rating', label: 'Rating' },
+];
+
+const LIFECYCLE_EMAILS_COLUMNS: ColumnDef[] = [
+  { id: 'sent', label: 'Sent', locked: true },
+  { id: 'type', label: 'Type' },
+  { id: 'recipient', label: 'Recipient' },
+  { id: 'status', label: 'Status' },
+];
 
 const IDENTITY_TYPES: IdentityDocument['type'][] = ['Government ID', 'Passport', 'Visa/Work Permit', "Driver's License", 'Other'];
 const DOCUMENT_TYPES: EmployeeDocument['type'][] = ['Employment Contract', 'NDA', 'Confidentiality Agreement', 'Handbook Acknowledgment', 'Code of Conduct Acknowledgment', 'Equipment Handover Form', 'Other'];
@@ -73,6 +110,11 @@ function EmployeeDetailPageInner() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [draftBool, setDraftBool] = useState<Record<string, boolean>>({});
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const identityDocsColumnVisibility = useColumnVisibility('employee-identity-docs', IDENTITY_DOCS_COLUMNS);
+  const assetsColumnVisibility = useColumnVisibility('employee-assets', ASSETS_COLUMNS);
+  const itAccountsColumnVisibility = useColumnVisibility('employee-it-accounts', IT_ACCOUNTS_COLUMNS);
+  const performanceColumnVisibility = useColumnVisibility('employee-performance', PERFORMANCE_COLUMNS);
+  const lifecycleEmailsColumnVisibility = useColumnVisibility('employee-lifecycle-emails', LIFECYCLE_EMAILS_COLUMNS);
 
   const employee = employees.find(e => e.id === params.id);
   const smtpSettings = smtpConfigList.find(s => s.id === 'default');
@@ -573,14 +615,18 @@ function EmployeeDetailPageInner() {
                   <CardTitle>Identity Verification</CardTitle>
                   <CardDescription>Store only what you genuinely need, and protect it carefully.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('identityDoc', { type: 'Government ID' })}><PlusCircle className="h-4 w-4" /> Add Document</Button>
+                <div className="flex items-center gap-2">
+                  <ColumnVisibilityMenu visibility={identityDocsColumnVisibility} />
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('identityDoc', { type: 'Government ID' })}><PlusCircle className="h-4 w-4" /> Add Document</Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
-                    <TableHead>Type</TableHead><TableHead>Number</TableHead>
-                    <TableHead className="hidden md:table-cell">Issued</TableHead>
-                    <TableHead className="hidden md:table-cell">Expires</TableHead>
+                    <TableHead>Type</TableHead>
+                    {identityDocsColumnVisibility.isVisible('number') && <TableHead>Number</TableHead>}
+                    {identityDocsColumnVisibility.isVisible('issued') && <TableHead className="hidden md:table-cell">Issued</TableHead>}
+                    {identityDocsColumnVisibility.isVisible('expires') && <TableHead className="hidden md:table-cell">Expires</TableHead>}
                     <TableHead><span className="sr-only">Actions</span></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
@@ -588,9 +634,9 @@ function EmployeeDetailPageInner() {
                     {(employee.identityDocuments ?? []).map(idoc => (
                       <TableRow key={idoc.id}>
                         <TableCell>{idoc.type}</TableCell>
-                        <TableCell className="font-mono text-sm">{idoc.documentNumber}</TableCell>
-                        <TableCell className="hidden md:table-cell">{fmt(idoc.issueDate)}</TableCell>
-                        <TableCell className="hidden md:table-cell">{fmt(idoc.expiryDate)}</TableCell>
+                        {identityDocsColumnVisibility.isVisible('number') && <TableCell className="font-mono text-sm">{idoc.documentNumber}</TableCell>}
+                        {identityDocsColumnVisibility.isVisible('issued') && <TableCell className="hidden md:table-cell">{fmt(idoc.issueDate)}</TableCell>}
+                        {identityDocsColumnVisibility.isVisible('expires') && <TableCell className="hidden md:table-cell">{fmt(idoc.expiryDate)}</TableCell>}
                         <TableCell>
                           <Button variant="ghost" size="icon" onClick={() => removeListItem('identityDocuments', idoc.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </TableCell>
@@ -633,15 +679,18 @@ function EmployeeDetailPageInner() {
                   <CardTitle>Company Assets</CardTitle>
                   <CardDescription>Everything issued to this employee.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('asset', { asset: 'Laptop', dateIssued: format(new Date(), 'yyyy-MM-dd') })}><PlusCircle className="h-4 w-4" /> Issue Asset</Button>
+                <div className="flex items-center gap-2">
+                  <ColumnVisibilityMenu visibility={assetsColumnVisibility} />
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('asset', { asset: 'Laptop', dateIssued: format(new Date(), 'yyyy-MM-dd') })}><PlusCircle className="h-4 w-4" /> Issue Asset</Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
                     <TableHead>Asset</TableHead>
-                    <TableHead className="hidden md:table-cell">Serial Number</TableHead>
-                    <TableHead>Date Issued</TableHead>
-                    <TableHead>Date Returned</TableHead>
+                    {assetsColumnVisibility.isVisible('serialNumber') && <TableHead className="hidden md:table-cell">Serial Number</TableHead>}
+                    {assetsColumnVisibility.isVisible('dateIssued') && <TableHead>Date Issued</TableHead>}
+                    {assetsColumnVisibility.isVisible('dateReturned') && <TableHead>Date Returned</TableHead>}
                     <TableHead><span className="sr-only">Actions</span></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
@@ -649,9 +698,9 @@ function EmployeeDetailPageInner() {
                     {(employee.issuedAssets ?? []).map(asset => (
                       <TableRow key={asset.id}>
                         <TableCell>{asset.asset}</TableCell>
-                        <TableCell className="hidden md:table-cell font-mono text-sm">{asset.serialNumber || '—'}</TableCell>
-                        <TableCell>{fmt(asset.dateIssued)}</TableCell>
-                        <TableCell>{asset.dateReturned ? fmt(asset.dateReturned) : <Badge variant="outline">Outstanding</Badge>}</TableCell>
+                        {assetsColumnVisibility.isVisible('serialNumber') && <TableCell className="hidden md:table-cell font-mono text-sm">{asset.serialNumber || '—'}</TableCell>}
+                        {assetsColumnVisibility.isVisible('dateIssued') && <TableCell>{fmt(asset.dateIssued)}</TableCell>}
+                        {assetsColumnVisibility.isVisible('dateReturned') && <TableCell>{asset.dateReturned ? fmt(asset.dateReturned) : <Badge variant="outline">Outstanding</Badge>}</TableCell>}
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -674,15 +723,18 @@ function EmployeeDetailPageInner() {
                   <CardTitle>IT Accounts</CardTitle>
                   <CardDescription>Provisioning checklist — never store passwords here.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('itAccount', { system: 'Company Email' }, { mfaEnabled: true })}><PlusCircle className="h-4 w-4" /> Add Account</Button>
+                <div className="flex items-center gap-2">
+                  <ColumnVisibilityMenu visibility={itAccountsColumnVisibility} />
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('itAccount', { system: 'Company Email' }, { mfaEnabled: true })}><PlusCircle className="h-4 w-4" /> Add Account</Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
                     <TableHead>System</TableHead>
-                    <TableHead className="hidden md:table-cell">Username</TableHead>
-                    <TableHead>MFA</TableHead>
-                    <TableHead>Status</TableHead>
+                    {itAccountsColumnVisibility.isVisible('username') && <TableHead className="hidden md:table-cell">Username</TableHead>}
+                    {itAccountsColumnVisibility.isVisible('mfa') && <TableHead>MFA</TableHead>}
+                    {itAccountsColumnVisibility.isVisible('status') && <TableHead>Status</TableHead>}
                     <TableHead><span className="sr-only">Actions</span></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
@@ -690,9 +742,9 @@ function EmployeeDetailPageInner() {
                     {(employee.itAccounts ?? []).map(account => (
                       <TableRow key={account.id}>
                         <TableCell>{account.system}</TableCell>
-                        <TableCell className="hidden md:table-cell">{account.username || '—'}</TableCell>
-                        <TableCell><Switch checked={account.mfaEnabled} onCheckedChange={() => toggleAccountMfa(account.id)} aria-label="MFA enabled" /></TableCell>
-                        <TableCell><Badge variant={account.status === 'Active' ? 'default' : 'destructive'}>{account.status}</Badge></TableCell>
+                        {itAccountsColumnVisibility.isVisible('username') && <TableCell className="hidden md:table-cell">{account.username || '—'}</TableCell>}
+                        {itAccountsColumnVisibility.isVisible('mfa') && <TableCell><Switch checked={account.mfaEnabled} onCheckedChange={() => toggleAccountMfa(account.id)} aria-label="MFA enabled" /></TableCell>}
+                        {itAccountsColumnVisibility.isVisible('status') && <TableCell><Badge variant={account.status === 'Active' ? 'default' : 'destructive'}>{account.status}</Badge></TableCell>}
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -831,25 +883,28 @@ function EmployeeDetailPageInner() {
                   <CardTitle>Performance History</CardTitle>
                   <CardDescription>Reviews, promotions, salary changes, training and recognition over time.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('performance', { type: 'Performance Review', date: format(new Date(), 'yyyy-MM-dd') })}><PlusCircle className="h-4 w-4" /> Add Record</Button>
+                <div className="flex items-center gap-2">
+                  <ColumnVisibilityMenu visibility={performanceColumnVisibility} />
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openDialog('performance', { type: 'Performance Review', date: format(new Date(), 'yyyy-MM-dd') })}><PlusCircle className="h-4 w-4" /> Add Record</Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
+                    {performanceColumnVisibility.isVisible('date') && <TableHead>Date</TableHead>}
+                    {performanceColumnVisibility.isVisible('type') && <TableHead>Type</TableHead>}
                     <TableHead>Title</TableHead>
-                    <TableHead className="hidden md:table-cell">Rating</TableHead>
+                    {performanceColumnVisibility.isVisible('rating') && <TableHead className="hidden md:table-cell">Rating</TableHead>}
                     <TableHead><span className="sr-only">Actions</span></TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {(employee.performanceRecords ?? []).length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">No performance records yet.</TableCell></TableRow>}
                     {[...(employee.performanceRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date)).map(record => (
                       <TableRow key={record.id}>
-                        <TableCell>{fmt(record.date)}</TableCell>
-                        <TableCell><Badge variant={record.type === 'Disciplinary Action' ? 'destructive' : 'secondary'}>{record.type}</Badge></TableCell>
+                        {performanceColumnVisibility.isVisible('date') && <TableCell>{fmt(record.date)}</TableCell>}
+                        {performanceColumnVisibility.isVisible('type') && <TableCell><Badge variant={record.type === 'Disciplinary Action' ? 'destructive' : 'secondary'}>{record.type}</Badge></TableCell>}
                         <TableCell>{record.title}</TableCell>
-                        <TableCell className="hidden md:table-cell">{record.rating ? `${record.rating}/5` : '—'}</TableCell>
+                        {performanceColumnVisibility.isVisible('rating') && <TableCell className="hidden md:table-cell">{record.rating ? `${record.rating}/5` : '—'}</TableCell>}
                         <TableCell>
                           <Button variant="ghost" size="icon" onClick={() => removeListItem('performanceRecords', record.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </TableCell>
@@ -903,28 +958,33 @@ function EmployeeDetailPageInner() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Lifecycle Emails</CardTitle>
-                <CardDescription>
-                  Onboarding email {employee.onboardingEmailSentAt ? `last sent ${format(parseISO(employee.onboardingEmailSentAt), 'MMM d, yyyy HH:mm')}` : 'not sent yet'} ·
-                  Offboarding email {employee.offboardingEmailSentAt ? `last sent ${format(parseISO(employee.offboardingEmailSentAt), 'MMM d, yyyy HH:mm')}` : 'not sent yet'}
-                </CardDescription>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <CardTitle>Lifecycle Emails</CardTitle>
+                    <CardDescription>
+                      Onboarding email {employee.onboardingEmailSentAt ? `last sent ${format(parseISO(employee.onboardingEmailSentAt), 'MMM d, yyyy HH:mm')}` : 'not sent yet'} ·
+                      Offboarding email {employee.offboardingEmailSentAt ? `last sent ${format(parseISO(employee.offboardingEmailSentAt), 'MMM d, yyyy HH:mm')}` : 'not sent yet'}
+                    </CardDescription>
+                  </div>
+                  <ColumnVisibilityMenu visibility={lifecycleEmailsColumnVisibility} />
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader><TableRow>
                     <TableHead>Sent</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="hidden md:table-cell">Recipient</TableHead>
-                    <TableHead>Status</TableHead>
+                    {lifecycleEmailsColumnVisibility.isVisible('type') && <TableHead>Type</TableHead>}
+                    {lifecycleEmailsColumnVisibility.isVisible('recipient') && <TableHead className="hidden md:table-cell">Recipient</TableHead>}
+                    {lifecycleEmailsColumnVisibility.isVisible('status') && <TableHead>Status</TableHead>}
                   </TableRow></TableHeader>
                   <TableBody>
                     {employeeLogs.length === 0 && <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">No emails sent to this employee yet.</TableCell></TableRow>}
                     {employeeLogs.map(log => (
                       <TableRow key={log.id}>
                         <TableCell className="whitespace-nowrap">{format(parseISO(log.sentAt), 'MMM d, yyyy HH:mm')}</TableCell>
-                        <TableCell className="capitalize">{log.templateId}</TableCell>
-                        <TableCell className="hidden md:table-cell">{log.to}</TableCell>
-                        <TableCell><Badge variant={log.status === 'sent' ? 'default' : 'destructive'} title={log.error}>{log.status === 'sent' ? 'Sent' : 'Failed'}</Badge></TableCell>
+                        {lifecycleEmailsColumnVisibility.isVisible('type') && <TableCell className="capitalize">{log.templateId}</TableCell>}
+                        {lifecycleEmailsColumnVisibility.isVisible('recipient') && <TableCell className="hidden md:table-cell">{log.to}</TableCell>}
+                        {lifecycleEmailsColumnVisibility.isVisible('status') && <TableCell><Badge variant={log.status === 'sent' ? 'default' : 'destructive'} title={log.error}>{log.status === 'sent' ? 'Sent' : 'Failed'}</Badge></TableCell>}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1063,7 +1123,7 @@ function EmployeeDetailPageInner() {
               </Select>
             </div>
             <TextField label="Document Number" value={d('documentNumber')} onChange={setD('documentNumber')} />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <TextField label="Issue Date" type="date" value={d('issueDate')} onChange={setD('issueDate')} />
               <TextField label="Expiry Date" type="date" value={d('expiryDate')} onChange={setD('expiryDate')} />
             </div>
@@ -1177,7 +1237,7 @@ function EmployeeDetailPageInner() {
               </Select>
             </div>
             <TextField label="Title" value={d('title')} onChange={setD('title')} placeholder="e.g. Q2 review, Promotion to Senior" />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <TextField label="Date" type="date" value={d('date')} onChange={setD('date')} />
               <TextField label="Rating (1–5, optional)" type="number" value={d('rating')} onChange={setD('rating')} />
             </div>

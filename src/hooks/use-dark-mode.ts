@@ -7,9 +7,10 @@ const DARK_MODE_KEY = 'czium-dark-mode';
 export function useDarkMode() {
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    // Default to light on first visit (no stored preference yet) rather than
+    // following the OS/browser's prefers-color-scheme.
     const stored = localStorage.getItem(DARK_MODE_KEY);
-    if (stored !== null) return stored === 'true';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return stored === 'true';
   });
 
   useEffect(() => {

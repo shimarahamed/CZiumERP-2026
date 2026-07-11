@@ -9,17 +9,40 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useAppContext } from '@/context/AppContext';
 import { CSVExportButton } from '@/components/CSVExportButton';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+import { formatNumber, lineTotal } from '@/lib/money';
+
+const PRODUCT_PROFITABILITY_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Product', locked: true },
+  { id: 'qty', label: 'Units Sold' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'cogs', label: 'COGS' },
+  { id: 'profit', label: 'Gross Profit' },
+  { id: 'margin', label: 'Margin' },
+];
+
+const PROJECT_PROFITABILITY_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Project', locked: true },
+  { id: 'client', label: 'Client' },
+  { id: 'status', label: 'Status' },
+  { id: 'budget', label: 'Budget' },
+];
 
 export default function ProfitabilityPage() {
   const { invoices, products, projects, currencySymbol } = useAppContext();
   const [tab, setTab] = useState<'product' | 'project'>('product');
+  const productColumnVisibility = useColumnVisibility('profitability-product', PRODUCT_PROFITABILITY_COLUMNS);
+  const { isVisible: isProductVisible } = productColumnVisibility;
+  const projectColumnVisibility = useColumnVisibility('profitability-project', PROJECT_PROFITABILITY_COLUMNS);
+  const { isVisible: isProjectVisible } = projectColumnVisibility;
 
   const productProfitability = useMemo(() => {
     const map = new Map<string, { id: string; name: string; revenue: number; cogs: number; qty: number }>();
     invoices.filter(i => i.status === 'paid').forEach(inv => {
       inv.items.forEach(item => {
         const existing = map.get(item.productId) ?? { id: item.productId, name: item.productName, revenue: 0, cogs: 0, qty: 0 };
-        existing.revenue += item.price * item.quantity;
+        existing.revenue += lineTotal(item.price, item.quantity, item.discount, item.discountType);
         existing.cogs += item.cost * item.quantity;
         existing.qty += item.quantity;
         map.set(item.productId, existing);
@@ -57,30 +80,36 @@ export default function ProfitabilityPage() {
               <TabsTrigger value="project">By Project</TabsTrigger>
             </TabsList>
             {tab === 'product' && (
-              <CSVExportButton
-                data={productProfitability as Record<string, unknown>[]}
-                filename="product-profitability"
-                columns={[
-                  { key: 'name', label: 'Product' },
-                  { key: 'qty', label: 'Units Sold' },
-                  { key: 'revenue', label: 'Revenue' },
-                  { key: 'cogs', label: 'COGS' },
-                  { key: 'profit', label: 'Gross Profit' },
-                  { key: 'margin', label: 'Margin %' },
-                ]}
-              />
+              <>
+                <CSVExportButton
+                  data={productProfitability as Record<string, unknown>[]}
+                  filename="product-profitability"
+                  columns={[
+                    { key: 'name', label: 'Product' },
+                    { key: 'qty', label: 'Units Sold' },
+                    { key: 'revenue', label: 'Revenue' },
+                    { key: 'cogs', label: 'COGS' },
+                    { key: 'profit', label: 'Gross Profit' },
+                    { key: 'margin', label: 'Margin %' },
+                  ]}
+                />
+                <ColumnVisibilityMenu visibility={productColumnVisibility} />
+              </>
             )}
             {tab === 'project' && (
-              <CSVExportButton
-                data={projectProfitability as Record<string, unknown>[]}
-                filename="project-profitability"
-                columns={[
-                  { key: 'name', label: 'Project' },
-                  { key: 'client', label: 'Client' },
-                  { key: 'status', label: 'Status' },
-                  { key: 'budget', label: 'Budget' },
-                ]}
-              />
+              <>
+                <CSVExportButton
+                  data={projectProfitability as Record<string, unknown>[]}
+                  filename="project-profitability"
+                  columns={[
+                    { key: 'name', label: 'Project' },
+                    { key: 'client', label: 'Client' },
+                    { key: 'status', label: 'Status' },
+                    { key: 'budget', label: 'Budget' },
+                  ]}
+                />
+                <ColumnVisibilityMenu visibility={projectColumnVisibility} />
+              </>
             )}
           </div>
 
@@ -95,11 +124,11 @@ export default function ProfitabilityPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
-                      <TableHead className="text-right">Units Sold</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">COGS</TableHead>
-                      <TableHead className="text-right">Gross Profit</TableHead>
-                      <TableHead className="text-right">Margin</TableHead>
+                      {isProductVisible('qty') && <TableHead className="text-right">Units Sold</TableHead>}
+                      {isProductVisible('revenue') && <TableHead className="text-right">Revenue</TableHead>}
+                      {isProductVisible('cogs') && <TableHead className="text-right">COGS</TableHead>}
+                      {isProductVisible('profit') && <TableHead className="text-right">Gross Profit</TableHead>}
+                      {isProductVisible('margin') && <TableHead className="text-right">Margin</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -108,15 +137,17 @@ export default function ProfitabilityPage() {
                     ) : productProfitability.map(p => (
                       <TableRow key={p.id}>
                         <TableCell className="font-medium">{p.name}</TableCell>
-                        <TableCell className="text-right">{p.qty}</TableCell>
-                        <TableCell className="text-right">{currencySymbol} {p.revenue.toFixed(2)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{currencySymbol} {p.cogs.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-semibold">{currencySymbol} {p.profit.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={p.margin >= 30 ? 'default' : p.margin >= 10 ? 'secondary' : 'destructive'}>
-                            {p.margin.toFixed(1)}%
-                          </Badge>
-                        </TableCell>
+                        {isProductVisible('qty') && <TableCell className="text-right">{p.qty}</TableCell>}
+                        {isProductVisible('revenue') && <TableCell className="text-right">{currencySymbol} {formatNumber(p.revenue)}</TableCell>}
+                        {isProductVisible('cogs') && <TableCell className="text-right text-muted-foreground">{currencySymbol} {formatNumber(p.cogs)}</TableCell>}
+                        {isProductVisible('profit') && <TableCell className="text-right font-semibold">{currencySymbol} {formatNumber(p.profit)}</TableCell>}
+                        {isProductVisible('margin') && (
+                          <TableCell className="text-right">
+                            <Badge variant={p.margin >= 30 ? 'default' : p.margin >= 10 ? 'secondary' : 'destructive'}>
+                              {formatNumber(p.margin, 1, 1)}%
+                            </Badge>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -136,9 +167,9 @@ export default function ProfitabilityPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Project</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Budget</TableHead>
+                      {isProjectVisible('client') && <TableHead>Client</TableHead>}
+                      {isProjectVisible('status') && <TableHead>Status</TableHead>}
+                      {isProjectVisible('budget') && <TableHead className="text-right">Budget</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -147,11 +178,13 @@ export default function ProfitabilityPage() {
                     ) : projectProfitability.map(p => (
                       <TableRow key={p.id}>
                         <TableCell className="font-medium">{p.name}</TableCell>
-                        <TableCell>{p.client}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="capitalize">{p.status.replace('-', ' ')}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{currencySymbol} {p.budget.toFixed(2)}</TableCell>
+                        {isProjectVisible('client') && <TableCell>{p.client}</TableCell>}
+                        {isProjectVisible('status') && (
+                          <TableCell>
+                            <Badge variant="secondary" className="capitalize">{p.status.replace('-', ' ')}</Badge>
+                          </TableCell>
+                        )}
+                        {isProjectVisible('budget') && <TableCell className="text-right">{currencySymbol} {formatNumber(p.budget)}</TableCell>}
                       </TableRow>
                     ))}
                   </TableBody>

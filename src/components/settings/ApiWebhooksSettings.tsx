@@ -13,12 +13,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Trash2, PlusCircle, Copy } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
-import { uuid } from '@/lib/utils';
+import { uuid, copyToClipboard } from '@/lib/utils';
 import { useAppContext } from '@/context/AppContext';
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
 import type { ApiKey, WebhookEndpoint, WebhookEventType } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
 const WEBHOOK_EVENTS: WebhookEventType[] = ['invoice.created', 'stock.low', 'purchase-order.approved'];
+
+const API_KEYS_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', locked: true },
+  { id: 'prefix', label: 'Prefix' },
+  { id: 'scopes', label: 'Scopes' },
+  { id: 'status', label: 'Status' },
+];
+
+const WEBHOOKS_COLUMNS: ColumnDef[] = [
+  { id: 'url', label: 'URL', locked: true },
+  { id: 'events', label: 'Events' },
+  { id: 'status', label: 'Status' },
+];
 
 export default function ApiWebhooksSettings() {
   const { tenantId, user } = useAppContext();
@@ -35,6 +50,11 @@ export default function ApiWebhooksSettings() {
   const [isWebhookDialogOpen, setIsWebhookDialogOpen] = useState(false);
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
   const [newWebhookEvents, setNewWebhookEvents] = useState<WebhookEventType[]>([]);
+
+  const apiKeysColumnVisibility = useColumnVisibility('api-keys', API_KEYS_COLUMNS);
+  const { isVisible: isApiKeyColVisible } = apiKeysColumnVisibility;
+  const webhooksColumnVisibility = useColumnVisibility('webhooks', WEBHOOKS_COLUMNS);
+  const { isVisible: isWebhookColVisible } = webhooksColumnVisibility;
 
   const generateKey = async () => {
     if (!newKeyName.trim()) {
@@ -116,22 +136,31 @@ export default function ApiWebhooksSettings() {
             <Label className="text-base">API Keys</Label>
             <p className="text-xs text-muted-foreground">Authenticate external scripts/integrations against the read-only /v1 REST API. The raw key is shown once — save it securely.</p>
           </div>
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => setIsKeyDialogOpen(true)}>
-            <PlusCircle className="h-4 w-4" /> New key
-          </Button>
+          <div className="flex items-center gap-2">
+            <ColumnVisibilityMenu visibility={apiKeysColumnVisibility} />
+            <Button size="sm" variant="outline" className="gap-1" onClick={() => setIsKeyDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New key
+            </Button>
+          </div>
         </div>
         {apiKeys.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">No API keys yet.</p>
         ) : (
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Prefix</TableHead><TableHead>Scopes</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow>
+              <TableHead>Name</TableHead>
+              {isApiKeyColVisible('prefix') && <TableHead>Prefix</TableHead>}
+              {isApiKeyColVisible('scopes') && <TableHead>Scopes</TableHead>}
+              {isApiKeyColVisible('status') && <TableHead>Status</TableHead>}
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow></TableHeader>
             <TableBody>
               {apiKeys.map(key => (
                 <TableRow key={key.id}>
                   <TableCell>{key.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{key.keyPrefix}…</TableCell>
-                  <TableCell>{key.scopes.join(', ')}</TableCell>
-                  <TableCell>{key.revokedAt ? <Badge variant="destructive">Revoked</Badge> : <Badge variant="default">Active</Badge>}</TableCell>
+                  {isApiKeyColVisible('prefix') && <TableCell className="font-mono text-xs">{key.keyPrefix}…</TableCell>}
+                  {isApiKeyColVisible('scopes') && <TableCell>{key.scopes.join(', ')}</TableCell>}
+                  {isApiKeyColVisible('status') && <TableCell>{key.revokedAt ? <Badge variant="destructive">Revoked</Badge> : <Badge variant="default">Active</Badge>}</TableCell>}
                   <TableCell className="text-right">
                     {!key.revokedAt && <Button size="sm" variant="ghost" onClick={() => revokeKey(key.id)}>Revoke</Button>}
                   </TableCell>
@@ -148,25 +177,35 @@ export default function ApiWebhooksSettings() {
             <Label className="text-base">Webhooks</Label>
             <p className="text-xs text-muted-foreground">Get an HMAC-signed POST when key events happen — invoice created, stock low, PO approved.</p>
           </div>
-          <Button size="sm" variant="outline" className="gap-1" onClick={() => setIsWebhookDialogOpen(true)}>
-            <PlusCircle className="h-4 w-4" /> New webhook
-          </Button>
+          <div className="flex items-center gap-2">
+            <ColumnVisibilityMenu visibility={webhooksColumnVisibility} />
+            <Button size="sm" variant="outline" className="gap-1" onClick={() => setIsWebhookDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4" /> New webhook
+            </Button>
+          </div>
         </div>
         {webhooks.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">No webhooks configured.</p>
         ) : (
           <Table>
-            <TableHeader><TableRow><TableHead>URL</TableHead><TableHead>Events</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow>
+              <TableHead>URL</TableHead>
+              {isWebhookColVisible('events') && <TableHead>Events</TableHead>}
+              {isWebhookColVisible('status') && <TableHead>Status</TableHead>}
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow></TableHeader>
             <TableBody>
               {webhooks.map(wh => (
                 <TableRow key={wh.id}>
                   <TableCell className="max-w-xs truncate">{wh.url}</TableCell>
-                  <TableCell className="text-xs">{wh.events.join(', ')}</TableCell>
-                  <TableCell>
-                    <Badge variant={wh.isActive ? 'default' : 'secondary'} className="cursor-pointer" onClick={() => toggleWebhookActive(wh)}>
-                      {wh.isActive ? 'Active' : 'Paused'}
-                    </Badge>
-                  </TableCell>
+                  {isWebhookColVisible('events') && <TableCell className="text-xs">{wh.events.join(', ')}</TableCell>}
+                  {isWebhookColVisible('status') && (
+                    <TableCell>
+                      <Badge variant={wh.isActive ? 'default' : 'secondary'} className="cursor-pointer" onClick={() => toggleWebhookActive(wh)}>
+                        {wh.isActive ? 'Active' : 'Paused'}
+                      </Badge>
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     <Button size="sm" variant="ghost" onClick={() => removeWebhook(wh.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </TableCell>
@@ -185,7 +224,10 @@ export default function ApiWebhooksSettings() {
               <DialogDescription>Save this key now — it will not be shown again.</DialogDescription>
               <div className="flex items-center gap-2">
                 <Input readOnly value={generatedKey} className="font-mono text-xs" />
-                <Button size="icon" variant="outline" onClick={() => { navigator.clipboard.writeText(generatedKey); toast({ title: 'Copied' }); }}>
+                <Button size="icon" variant="outline" onClick={async () => {
+                  const ok = await copyToClipboard(generatedKey);
+                  toast(ok ? { title: 'Copied' } : { variant: 'destructive', title: 'Copy failed', description: 'Select and copy the key manually.' });
+                }}>
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>

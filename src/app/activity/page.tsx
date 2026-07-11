@@ -14,6 +14,15 @@ import { ArrowUpDown, Download, ChevronDown } from '@/components/icons';
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { cn } from '@/lib/utils';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const ACTIVITY_COLUMNS: ColumnDef[] = [
+    { id: 'user', label: 'User', locked: true },
+    { id: 'timestamp', label: 'Timestamp' },
+    { id: 'action', label: 'Action' },
+    { id: 'details', label: 'Details' },
+];
 
 type SortKey = 'timestamp' | 'user' | 'action';
 const PAGE_SIZE = 25;
@@ -26,6 +35,8 @@ function ActivityLogPageInner() {
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [currentPage, setCurrentPage] = useState(1);
     const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+    const columnVisibility = useColumnVisibility('activity-logs', ACTIVITY_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -90,32 +101,39 @@ function ActivityLogPageInner() {
                         onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                         className="w-full sm:max-w-sm bg-secondary"
                     />
-                    <Button variant="outline" size="sm" className="gap-1 shrink-0" onClick={handleExportCSV}>
-                        <Download className="h-4 w-4" />
-                        Export CSV
-                    </Button>
+                    <div className="flex gap-2 shrink-0">
+                        <ColumnVisibilityMenu visibility={columnVisibility} />
+                        <Button variant="outline" size="sm" className="gap-1 shrink-0" onClick={handleExportCSV}>
+                            <Download className="h-4 w-4" />
+                            Export CSV
+                        </Button>
+                    </div>
                 </div>
                 <Card>
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    {isVisible('timestamp') && (
                                     <TableHead className="hidden md:table-cell">
                                         <Button variant="ghost" size="sm" onClick={() => handleSort('timestamp')}>
                                             Timestamp <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
                                         </Button>
                                     </TableHead>
+                                    )}
                                     <TableHead>
                                         <Button variant="ghost" size="sm" onClick={() => handleSort('user')}>
                                             User <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
                                         </Button>
                                     </TableHead>
+                                    {isVisible('action') && (
                                     <TableHead>
                                         <Button variant="ghost" size="sm" onClick={() => handleSort('action')}>
                                             Action <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
                                         </Button>
                                     </TableHead>
-                                    <TableHead>Details</TableHead>
+                                    )}
+                                    {isVisible('details') && <TableHead>Details</TableHead>}
                                     <TableHead className="w-8"></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -133,17 +151,19 @@ function ActivityLogPageInner() {
                                                 className={cn(hasChanges && "cursor-pointer hover:bg-muted/50")}
                                                 onClick={() => hasChanges && setExpandedLogId(isExpanded ? null : log.id)}
                                             >
+                                                {isVisible('timestamp') && (
                                                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground whitespace-nowrap">
                                                     {format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}
                                                 </TableCell>
+                                                )}
                                                 <TableCell>
                                                     <div className="font-medium text-sm">{log.user}</div>
                                                     <div className="text-muted-foreground md:hidden text-xs">
                                                         {format(new Date(log.timestamp), 'MMM d, HH:mm')}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-sm">{log.action}</TableCell>
-                                                <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{log.details}</TableCell>
+                                                {isVisible('action') && <TableCell className="text-sm">{log.action}</TableCell>}
+                                                {isVisible('details') && <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{log.details}</TableCell>}
                                                 <TableCell className="w-8">
                                                     {hasChanges && (
                                                         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", isExpanded && "rotate-180")} />

@@ -11,6 +11,7 @@ import { useAppContext } from '@/context/AppContext';
 import type { Product } from '@/types';
 import { Barcode, Video, VideoOff, CheckCircle } from '@/components/icons';
 import { cn } from '@/lib/utils';
+import { formatNumber } from '@/lib/money';
 
 export default function ScannerPage() {
   const { products, currencySymbol } = useAppContext();
@@ -132,7 +133,7 @@ export default function ScannerPage() {
                 </CardHeader>
                 <CardContent>
                     <p className="text-lg font-bold">{scannedProduct.name}</p>
-                    <p className="text-muted-foreground">Price: {currencySymbol} {scannedProduct.price.toFixed(2)}</p>
+                    <p className="text-muted-foreground">Price: {currencySymbol} {formatNumber(scannedProduct.price)}</p>
                     <p className="text-muted-foreground">Stock: {scannedProduct.stock}</p>
                 </CardContent>
               </Card>

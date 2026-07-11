@@ -28,11 +28,13 @@ export default function DeveloperSettings() {
             enableNetwork(db).then(() => {
                 toast({ title: 'Online Sync Enabled', description: 'Data will now sync with the cloud.' });
                 localStorage.setItem('isOnline', 'true');
+                window.dispatchEvent(new Event('czium:online-status'));
             });
         } else {
             disableNetwork(db).then(() => {
                 toast({ title: 'Online Sync Disabled', description: 'Application is now in offline mode.' });
                 localStorage.setItem('isOnline', 'false');
+                window.dispatchEvent(new Event('czium:online-status'));
             });
         }
     };

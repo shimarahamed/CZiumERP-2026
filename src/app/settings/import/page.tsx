@@ -68,7 +68,7 @@ function ImportInner() {
       const storeId = currentStore?.id;
       let count = records.length;
       if (kind === 'products') {
-        const items = toProducts(records, storeId, ts);
+        const items = toProducts(records, storeId, ts, products, vendors);
         setProducts(prev => [...items, ...prev]);
       } else if (kind === 'customers') {
         const items = toCustomers(records, storeId, ts);
@@ -178,7 +178,7 @@ function ImportInner() {
 }
 
 export default function ImportPage() {
-  const isAllowed = useRequireRole(['admin', 'manager']);
+  const isAllowed = useRequireRole(['admin', 'manager', 'cashier', 'inventory-staff']);
   if (!isAllowed) return null;
   return <ImportInner />;
 }

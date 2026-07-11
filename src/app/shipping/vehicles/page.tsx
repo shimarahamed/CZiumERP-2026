@@ -193,7 +193,7 @@ export default function VehiclesPage() {
                              <FormField control={form.control} name="serialNumber" render={({ field }) => (
                                 <FormItem><FormLabel>License Plate / VIN</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="purchaseDate" render={({ field }) => (
                                     <FormItem className="flex flex-col pt-2"><FormLabel>Purchase Date</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                                 )}/>

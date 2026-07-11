@@ -29,6 +29,17 @@ import { MoreHorizontal, PlusCircle } from '@/components/icons';
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { buildOnboardingEmail, isSmtpConfigured, sendHrEmail } from '@/lib/hr-email';
 import { EMPLOYMENT_TYPES, EMPLOYMENT_STATUSES, statusBadgeVariant, nextEmployeeCode } from '@/lib/hr';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const EMPLOYEES_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Employee', locked: true },
+  { id: 'employeeCode', label: 'Employee ID' },
+  { id: 'jobTitle', label: 'Job Title' },
+  { id: 'department', label: 'Department' },
+  { id: 'startDate', label: 'Start Date' },
+  { id: 'status', label: 'Status' },
+];
 
 const employeeSchema = z.object({
   name: z.string().min(1, "Name is required."),
@@ -60,6 +71,8 @@ function EmployeesPageInner() {
 
     const canManage = useRequirePermission('Human Resources', 'edit');
     const smtpSettings = smtpConfigList.find(s => s.id === 'default');
+    const columnVisibility = useColumnVisibility('employees', EMPLOYEES_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const filteredEmployees = useMemo(() => {
         let result = employees.filter(employee =>
@@ -221,6 +234,7 @@ function EmployeesPageInner() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full md:w-auto md:min-w-[220px] bg-secondary"
                                 />
+                                <ColumnVisibilityMenu visibility={columnVisibility} />
                                 <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => handleOpenForm()}>
                                     <PlusCircle className="h-4 w-4" />
                                     Add Employee
@@ -233,11 +247,11 @@ function EmployeesPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Employee</TableHead>
-                                    <TableHead className="hidden lg:table-cell">Employee ID</TableHead>
-                                    <TableHead>Job Title</TableHead>
-                                    <TableHead className="hidden md:table-cell">Department</TableHead>
-                                    <TableHead className="hidden md:table-cell">Start Date</TableHead>
-                                    <TableHead>Status</TableHead>
+                                    {isVisible('employeeCode') && <TableHead className="hidden lg:table-cell">Employee ID</TableHead>}
+                                    {isVisible('jobTitle') && <TableHead>Job Title</TableHead>}
+                                    {isVisible('department') && <TableHead className="hidden md:table-cell">Department</TableHead>}
+                                    {isVisible('startDate') && <TableHead className="hidden md:table-cell">Start Date</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -262,13 +276,15 @@ function EmployeesPageInner() {
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="hidden lg:table-cell text-muted-foreground">{employee.employeeCode ?? '—'}</TableCell>
-                                        <TableCell>{employee.jobTitle}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{employee.department}</TableCell>
-                                        <TableCell className="hidden md:table-cell">{format(parseISO(employee.dateOfJoining), 'MMM d, yyyy')}</TableCell>
+                                        {isVisible('employeeCode') && <TableCell className="hidden lg:table-cell text-muted-foreground">{employee.employeeCode ?? '—'}</TableCell>}
+                                        {isVisible('jobTitle') && <TableCell>{employee.jobTitle}</TableCell>}
+                                        {isVisible('department') && <TableCell className="hidden md:table-cell">{employee.department}</TableCell>}
+                                        {isVisible('startDate') && <TableCell className="hidden md:table-cell">{format(parseISO(employee.dateOfJoining), 'MMM d, yyyy')}</TableCell>}
+                                        {isVisible('status') && (
                                         <TableCell>
                                             <Badge variant={statusBadgeVariant(employee.employmentStatus)}>{employee.employmentStatus ?? 'Active'}</Badge>
                                         </TableCell>
+                                        )}
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>

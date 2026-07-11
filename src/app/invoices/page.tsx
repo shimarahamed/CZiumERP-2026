@@ -35,7 +35,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from '@/hooks/use-debounce';
-import { buildInvoiceLedgerEntries } from '@/lib/posting';
+import { buildInvoiceLedgerEntries, postInvoiceServerSideFast } from '@/lib/posting';
 import Header from "@/components/Header";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -45,12 +45,32 @@ import InvoiceReceiptView from "@/components/InvoiceReceiptView";
 import { useAppContext } from "@/context/AppContext";
 import { getNextDocumentNumber, bumpCounterToAtLeast } from '@/lib/document-number';
 import { formatDateUK } from '@/lib/date-format';
+import { formatNumber, lineTotal, mulMoney, discountedUnitPrice } from '@/lib/money';
 import type { Invoice, InvoiceItem, Customer, CustomerTier, RecurringInvoice, RecurringFrequency, Attachment, Currency } from "@/types";
 import { Combobox } from "@/components/ui/combobox";
 import BarcodeScanner from "@/components/BarcodeScanner";
-import { MoreHorizontal, PlusCircle, Trash2, ScanLine, ScrollText, FileText, Info, ArrowUpDown, CheckCircle, X, Paperclip, RefreshCw, Pause, Play, Loader2 } from "@/components/icons";
+import { MoreHorizontal, PlusCircle, Trash2, ScanLine, ScrollText, FileText, Info, ArrowUpDown, CheckCircle, X, Paperclip, RefreshCw, Pause, Play, Loader2, CreditCard } from "@/components/icons";
 import { useFirestoreQuery } from "@/hooks/use-firestore-query";
 import { db } from "@/lib/firebase";
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const INVOICES_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'Invoice ID', locked: true },
+    { id: 'customerName', label: 'Customer' },
+    { id: 'amount', label: 'Amount' },
+    { id: 'status', label: 'Status' },
+    { id: 'date', label: 'Date' },
+];
+
+const RECURRING_INVOICES_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'ID', locked: true },
+    { id: 'customerName', label: 'Customer' },
+    { id: 'amount', label: 'Amount' },
+    { id: 'frequency', label: 'Frequency' },
+    { id: 'nextDueDate', label: 'Next Due' },
+    { id: 'status', label: 'Status' },
+];
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR'];
 const MAX_FILE_SIZE = 512000;
@@ -81,6 +101,7 @@ const invoiceSchema = z.object({
   customLines: z.array(customLineSchema),
   discount: z.coerce.number().min(0).max(100).optional(),
   taxRate: z.coerce.number().min(0).max(100, "Tax rate cannot exceed 100%.").optional(),
+  salesperson: z.string().optional(),
 }).refine(data => data.items.length + data.customLines.length > 0, {
   message: "Invoice must have at least one item or custom line.",
   path: ['items'],
@@ -172,6 +193,10 @@ export default function InvoicesPage() {
     const [activeTab, setActiveTab] = useState('all');
 
     const canManage = useRequirePermission('Sales & Customers', 'edit');
+    const invoicesColumnVisibility = useColumnVisibility('invoices', INVOICES_COLUMNS);
+    const { isVisible: isInvoiceColVisible } = invoicesColumnVisibility;
+    const recurringColumnVisibility = useColumnVisibility('recurringInvoices', RECURRING_INVOICES_COLUMNS);
+    const { isVisible: isRecurringColVisible } = recurringColumnVisibility;
 
     // --- Invoice form ---
     const form = useForm<InvoiceFormData>({
@@ -190,6 +215,7 @@ export default function InvoicesPage() {
             customLines: [],
             discount: 0,
             taxRate: 0,
+            salesperson: '',
         },
     });
 
@@ -256,19 +282,39 @@ export default function InvoicesPage() {
     const watchedWalkInName = useWatch({ control: form.control, name: 'walkInName' });
 
     const subtotal = useMemo(() => {
+        // Each product line is net of the product's own discount %; the
+        // invoice-level discount below applies on top.
         const productTotal = watchedItems.reduce((acc, item) => {
             const product = products.find(p => p.id === item.productId);
-            return acc + (product ? product.price * (item.quantity || 0) : 0);
+            return acc + (product ? lineTotal(product.price, item.quantity || 0, product.discount, product.discountType) : 0);
         }, 0);
         const customTotal = (watchedCustomLines ?? []).reduce((acc, line) => acc + (line.price || 0) * (line.quantity || 0), 0);
         return productTotal + customTotal;
     }, [watchedItems, watchedCustomLines, products]);
 
+    // Gross figure (before any per-item discount) — shown as "Subtotal" so the
+    // Discount row can carry the item discounts instead of them silently
+    // vanishing into a lower subtotal while the discount field reads 0.
+    const grossSubtotal = useMemo(() => {
+        const productTotal = watchedItems.reduce((acc, item) => {
+            const product = products.find(p => p.id === item.productId);
+            return acc + (product ? mulMoney(product.price, item.quantity || 0) : 0);
+        }, 0);
+        const customTotal = (watchedCustomLines ?? []).reduce((acc, line) => acc + (line.price || 0) * (line.quantity || 0), 0);
+        return productTotal + customTotal;
+    }, [watchedItems, watchedCustomLines, products]);
+    const itemDiscounts = useMemo(() => grossSubtotal - subtotal, [grossSubtotal, subtotal]);
     const discountAmount = useMemo(() => subtotal * (watchedDiscount / 100), [subtotal, watchedDiscount]);
     const taxAmount = useMemo(() => (subtotal - discountAmount) * (watchedTaxRate / 100), [subtotal, discountAmount, watchedTaxRate]);
     const totalAmount = useMemo(() => subtotal - discountAmount + taxAmount, [subtotal, discountAmount, taxAmount]);
 
-    const productOptions = useMemo(() => products.map(p => ({ label: p.name, value: p.id })), [products]);
+    // Hint shows the effective unit price (net of the product's own discount)
+    // right-aligned in the dropdown, so cashiers see amounts while picking.
+    const productOptions = useMemo(() => products.map(p => ({
+        label: p.name,
+        value: p.id,
+        hint: `${currencySymbol} ${formatNumber(discountedUnitPrice(p.price, p.discount, p.discountType))}`,
+    })), [products, currencySymbol]);
     // Walk-in first, then customers — label embeds phone/email so the combobox
     // search matches on name, phone, OR email (e.g. type a phone to find them).
     const customerOptions = useMemo(() => [
@@ -308,6 +354,7 @@ export default function InvoicesPage() {
                     customLines: invoiceToEdit.items.filter(item => item.isCustom).map(item => ({ description: item.productName, quantity: item.quantity, price: item.price })),
                     discount: invoiceToEdit.discount || 0,
                     taxRate: invoiceToEdit.taxRate || 0,
+                    salesperson: invoiceToEdit.salesperson ?? '',
                 });
             } else {
                 // Auto-fill the tax rate from the current store's jurisdiction, if one is
@@ -329,6 +376,7 @@ export default function InvoicesPage() {
                     customLines: [],
                     discount: 0,
                     taxRate: autoTaxRate,
+                    salesperson: '',
                 });
             }
             const customer = customers.find(c => c.id === form.getValues('customerId'));
@@ -462,7 +510,7 @@ export default function InvoicesPage() {
                 toast({ variant: 'destructive', title: 'Product Not Found', description: `A selected product no longer exists.` });
                 return;
             }
-            newInvoiceItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, price: product.price, cost: product.cost });
+            newInvoiceItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, price: product.price, cost: product.cost, ...(product.discount ? { discount: product.discount, discountType: product.discountType ?? 'percent' } : {}), unit: product.unitOfMeasure || 'Pcs' });
         }
         // Custom lines (e.g. one-off fees) carry no product/stock record and never
         // touch the warehouse/stock-reservation logic below.
@@ -524,6 +572,79 @@ export default function InvoicesPage() {
             }
         }
         if (!stockSufficient) return;
+
+        const backendFirstPaidInvoice = !invoiceToEdit && data.status === 'paid';
+        if (backendFirstPaidInvoice) {
+            const invoicePrefix = themeSettings.invoicePrefix || 'INV-';
+            const serverInvoice: Invoice = {
+                id: '',
+                storeId: currentStore?.id,
+                ...customerFields,
+                userId: user?.id,
+                userName: user?.name,
+                status: 'paid',
+                paymentMethod: data.paymentMethod,
+                currency: data.currency,
+                date: format(data.date, 'yyyy-MM-dd'),
+                createdAt: new Date().toISOString(),
+                dueDate: format(addDays(data.date, 30), 'yyyy-MM-dd'),
+                items: newInvoiceItems,
+                amount: totalAmount,
+                discount: data.discount,
+                taxRate: data.taxRate,
+                salesperson: data.salesperson || undefined,
+                attachments,
+                ...(Object.keys(customData).length > 0 ? { customData } : {}),
+            };
+
+            try {
+                const postedInvoice = await postInvoiceServerSideFast(serverInvoice, invoicePrefix);
+                if (postedInvoice) {
+                    setInvoices(prev => [postedInvoice, ...prev.filter(inv => inv.id !== postedInvoice.id)]);
+
+                    if (!isWalkIn && customer) {
+                        const loyaltyTiers = themeSettings.loyaltySettings?.tiers || { Silver: { points: 500, discount: 5 }, Gold: { points: 2000, discount: 10 } };
+                        const customerIndex = customers.findIndex(c => c.id === customer.id);
+                        if (customerIndex > -1) {
+                            const updatedCustomers = [...customers];
+                            const customerToUpdate = { ...updatedCustomers[customerIndex] };
+                            const pointsEarned = Math.floor(postedInvoice.amount);
+                            customerToUpdate.loyaltyPoints = (customerToUpdate.loyaltyPoints || 0) + pointsEarned;
+                            if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Gold.points && customerToUpdate.tier !== 'Gold') customerToUpdate.tier = 'Gold';
+                            else if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Silver.points && customerToUpdate.tier === 'Bronze') customerToUpdate.tier = 'Silver';
+                            updatedCustomers[customerIndex] = customerToUpdate;
+                            setCustomers(updatedCustomers);
+                            toast({ title: "Loyalty Points Awarded!", description: `${customerToUpdate.name} earned ${pointsEarned} points.` });
+                        }
+                    }
+
+                    toast({ title: "Invoice Posted", description: `Backend posted invoice #${postedInvoice.id}.` });
+                    addActivityLog('Invoice Created', `Created invoice #${postedInvoice.id} for ${currencySymbol} ${formatNumber(postedInvoice.amount)}`);
+                    if (customer?.email) {
+                        void sendDepartmentEmail(
+                            { smtpConfigList, emailTemplates, setEmailLogs, companyName },
+                            'Sales & Customers',
+                            'invoice-created',
+                            customer.email,
+                            { invoiceId: postedInvoice.id, customerName: customer.name, amount: `${currencySymbol} ${formatNumber(postedInvoice.amount)}`, companyName },
+                            user?.name ?? 'system'
+                        );
+                    }
+                    setJustCreatedInvoice(postedInvoice);
+                    setIsFormOpen(false);
+                    setInvoiceToEdit(null);
+                    setAttachments([]);
+                    return;
+                }
+            } catch (error) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Could not post invoice',
+                    description: error instanceof Error ? error.message : 'The backend rejected this invoice.',
+                });
+                return;
+            }
+        }
 
         // Apply decrements immutably — new product objects so setProducts' change
         // detection actually fires (mutating in place was silently skipping writes).
@@ -600,6 +721,7 @@ export default function InvoicesPage() {
                 amount: totalAmount,
                 discount: data.discount,
                 taxRate: data.taxRate,
+                salesperson: data.salesperson || undefined,
                 attachments,
                 ...(Object.keys(customData).length > 0 ? { customData } : {}),
             };
@@ -660,6 +782,7 @@ export default function InvoicesPage() {
                 amount: totalAmount,
                 discount: data.discount,
                 taxRate: data.taxRate,
+                salesperson: data.salesperson || undefined,
                 attachments,
                 ...(Object.keys(customData).length > 0 ? { customData } : {}),
             };
@@ -670,18 +793,18 @@ export default function InvoicesPage() {
             }
             if (effectiveStatus === 'pending-approval') {
                 toast({ title: "Invoice Pending Approval", description: `Invoice #${newInvoice.id} exceeds the approval threshold and requires manager approval.` });
-                addNotification({ title: 'Invoice Requires Approval', description: `Invoice #${newInvoice.id} (${currencySymbol} ${totalAmount.toFixed(2)}) needs approval.`, href: '/invoices' });
+                addNotification({ title: 'Invoice Requires Approval', description: `Invoice #${newInvoice.id} (${currencySymbol} ${formatNumber(totalAmount)}) needs approval.`, href: '/invoices' });
             } else {
                 toast({ title: "Invoice Created" });
             }
-            addActivityLog('Invoice Created', `Created invoice #${newInvoice.id} for ${currencySymbol} ${totalAmount.toFixed(2)}`);
+            addActivityLog('Invoice Created', `Created invoice #${newInvoice.id} for ${currencySymbol} ${formatNumber(totalAmount)}`);
             if (customer?.email) {
                 void sendDepartmentEmail(
                     { smtpConfigList, emailTemplates, setEmailLogs, companyName },
                     'Sales & Customers',
                     'invoice-created',
                     customer.email,
-                    { invoiceId: newInvoice.id, customerName: customer.name, amount: `${currencySymbol} ${totalAmount.toFixed(2)}`, companyName },
+                    { invoiceId: newInvoice.id, customerName: customer.name, amount: `${currencySymbol} ${formatNumber(totalAmount)}`, companyName },
                     user?.name ?? 'system'
                 );
             }
@@ -831,10 +954,10 @@ export default function InvoicesPage() {
             <TableHeader>
                 <TableRow>
                     <TableHead className="w-[100px]"><Button variant="ghost" onClick={() => handleSort('id')}>Invoice ID <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                    <TableHead><Button variant="ghost" onClick={() => handleSort('customerName')}>Customer <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                    <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('amount')}>Amount <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                    <TableHead className="hidden md:table-cell">Status</TableHead>
-                    <TableHead className="hidden lg:table-cell"><Button variant="ghost" onClick={() => handleSort('date')}>Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
+                    {isInvoiceColVisible('customerName') && <TableHead><Button variant="ghost" onClick={() => handleSort('customerName')}>Customer <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                    {isInvoiceColVisible('amount') && <TableHead className="hidden md:table-cell"><Button variant="ghost" onClick={() => handleSort('amount')}>Amount <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                    {isInvoiceColVisible('status') && <TableHead className="hidden md:table-cell">Status</TableHead>}
+                    {isInvoiceColVisible('date') && <TableHead className="hidden lg:table-cell"><Button variant="ghost" onClick={() => handleSort('date')}>Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
                     <TableHead className="text-right w-[140px]">Actions</TableHead>
                 </TableRow>
             </TableHeader>
@@ -844,24 +967,29 @@ export default function InvoicesPage() {
                 )}
                 {invoices.map(invoice => (
                     <TableRow key={invoice.id}>
-                        <TableCell className="font-medium" onClick={() => onView(invoice)}>
+                        <TableCell className="font-medium" onClick={() => onViewFull(invoice)}>
                             <span className="md:hidden font-bold">{invoice.id}</span>
                             <span className="hidden md:inline">{invoice.id}</span>
                         </TableCell>
-                        <TableCell onClick={() => onView(invoice)}>
+                        {isInvoiceColVisible('customerName') && (
+                        <TableCell onClick={() => onViewFull(invoice)}>
                             <div className="font-medium">{invoice.customerName || 'N/A'}</div>
                             <div className="text-sm text-muted-foreground md:hidden">
-                                <p>{getInvoiceCurrencySymbol(invoice)} {invoice.amount.toFixed(2)} - {formatDateUK(invoice.date)}</p>
+                                <p>{getInvoiceCurrencySymbol(invoice)} {formatNumber(invoice.amount)} - {formatDateUK(invoice.date)}</p>
                                 <StatusBadge status={invoice.status} className="mt-1" />
                             </div>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell" onClick={() => onView(invoice)}>
-                            {getInvoiceCurrencySymbol(invoice)} {invoice.amount.toFixed(2)}
+                        )}
+                        {isInvoiceColVisible('amount') && (
+                        <TableCell className="hidden md:table-cell" onClick={() => onViewFull(invoice)}>
+                            {getInvoiceCurrencySymbol(invoice)} {formatNumber(invoice.amount)}
                             {invoice.currency && invoice.currency !== currency && (
                                 <Badge variant="outline" className="ml-1 text-xs">{invoice.currency}</Badge>
                             )}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell" onClick={() => onView(invoice)}>
+                        )}
+                        {isInvoiceColVisible('status') && (
+                        <TableCell className="hidden md:table-cell" onClick={() => onViewFull(invoice)}>
                             {invoice.status === 'pending-approval' && invoice.rejectionReason ? (
                                 <TooltipProvider>
                                     <Tooltip>
@@ -875,7 +1003,8 @@ export default function InvoicesPage() {
                                 <StatusBadge status={invoice.status} />
                             )}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell" onClick={() => onView(invoice)}>{formatDateUK(invoice.date)}</TableCell>
+                        )}
+                        {isInvoiceColVisible('date') && <TableCell className="hidden lg:table-cell" onClick={() => onViewFull(invoice)}>{formatDateUK(invoice.date)}</TableCell>}
                         <TableCell className="text-right">
                            <TooltipProvider>
                                 <div className="flex items-center justify-end gap-1">
@@ -936,7 +1065,11 @@ export default function InvoicesPage() {
 
     return (
         <div className="flex flex-col h-full">
-            <Header title="Invoices" />
+            <Header title="Invoices">
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => router.push('/pos')}>
+                    <CreditCard className="h-4 w-4" /> Point of Sale
+                </Button>
+            </Header>
             <main className="flex-1 overflow-auto p-4 md:p-6">
                 <Card>
                     <CardHeader>
@@ -948,6 +1081,11 @@ export default function InvoicesPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                                 />
+                                {activeTab === 'recurring' ? (
+                                    <ColumnVisibilityMenu visibility={recurringColumnVisibility} />
+                                ) : (
+                                    <ColumnVisibilityMenu visibility={invoicesColumnVisibility} />
+                                )}
                                 <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => handleOpenForm()}>
                                     <PlusCircle className="h-4 w-4" /> Create Invoice
                                 </Button>
@@ -989,11 +1127,11 @@ export default function InvoicesPage() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>ID</TableHead>
-                                            <TableHead>Customer</TableHead>
-                                            <TableHead>Amount</TableHead>
-                                            <TableHead>Frequency</TableHead>
-                                            <TableHead>Next Due</TableHead>
-                                            <TableHead>Status</TableHead>
+                                            {isRecurringColVisible('customerName') && <TableHead>Customer</TableHead>}
+                                            {isRecurringColVisible('amount') && <TableHead>Amount</TableHead>}
+                                            {isRecurringColVisible('frequency') && <TableHead>Frequency</TableHead>}
+                                            {isRecurringColVisible('nextDueDate') && <TableHead>Next Due</TableHead>}
+                                            {isRecurringColVisible('status') && <TableHead>Status</TableHead>}
                                             <TableHead>Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1004,13 +1142,15 @@ export default function InvoicesPage() {
                                         {recurringInvoices.map(rec => (
                                             <TableRow key={rec.id}>
                                                 <TableCell className="font-medium text-xs">{rec.id}</TableCell>
-                                                <TableCell>{rec.customerName ?? 'N/A'}</TableCell>
-                                                <TableCell>{rec.currency ? (currencySymbols[rec.currency] ?? rec.currency) : currencySymbol} {rec.amount.toFixed(2)}</TableCell>
-                                                <TableCell className="capitalize">{rec.frequency}</TableCell>
-                                                <TableCell>{rec.nextDueDate}</TableCell>
+                                                {isRecurringColVisible('customerName') && <TableCell>{rec.customerName ?? 'N/A'}</TableCell>}
+                                                {isRecurringColVisible('amount') && <TableCell>{rec.currency ? (currencySymbols[rec.currency] ?? rec.currency) : currencySymbol} {formatNumber(rec.amount)}</TableCell>}
+                                                {isRecurringColVisible('frequency') && <TableCell className="capitalize">{rec.frequency}</TableCell>}
+                                                {isRecurringColVisible('nextDueDate') && <TableCell>{rec.nextDueDate}</TableCell>}
+                                                {isRecurringColVisible('status') && (
                                                 <TableCell>
                                                     <Badge variant={rec.status === 'active' ? 'default' : 'secondary'} className="capitalize">{rec.status}</Badge>
                                                 </TableCell>
+                                                )}
                                                 <TableCell>
                                                     <div className="flex gap-1">
                                                         <TooltipProvider>
@@ -1122,6 +1262,9 @@ export default function InvoicesPage() {
                                 <FormField control={form.control} name="taxRate" render={({ field }) => (
                                     <FormItem className="flex flex-col"><FormLabel className="text-xs text-muted-foreground">Tax (%)</FormLabel><FormControl><Input type="number" step="0.1" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
+                                <FormField control={form.control} name="salesperson" render={({ field }) => (
+                                    <FormItem className="flex flex-col"><FormLabel className="text-xs text-muted-foreground">Salesperson</FormLabel><FormControl><Input placeholder="Optional" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
                             </div>
                             {(!watchedCustomerId || watchedCustomerId === 'walk-in') && (
                                 <div className="space-y-3 rounded-lg border border-dashed p-3 bg-muted/20">
@@ -1221,7 +1364,7 @@ export default function InvoicesPage() {
                                         {attachments.map(att => (
                                             <div key={att.id} className="flex items-center gap-2 text-sm p-1.5 rounded-md border bg-muted/30">
                                                 <span className="flex-1 truncate">{att.fileName}</span>
-                                                <span className="text-xs text-muted-foreground shrink-0">{(att.fileSize / 1024).toFixed(1)} KB</span>
+                                                <span className="text-xs text-muted-foreground shrink-0">{formatNumber(att.fileSize / 1024, 1, 1)} KB</span>
                                                 <a href={att.dataUrl} download={att.fileName} className="text-primary underline text-xs shrink-0">Download</a>
                                                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}>
                                                     <X className="h-3 w-3" />
@@ -1235,12 +1378,12 @@ export default function InvoicesPage() {
 
                             {/* Totals */}
                             <div className="rounded-lg border bg-muted/30 p-4 space-y-1.5 text-sm">
-                                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{currencySymbol} {subtotal.toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span className="text-muted-foreground">Discount ({watchedDiscount}%)</span><span className="tabular-nums text-destructive">-{currencySymbol} {discountAmount.toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span className="text-muted-foreground">Tax ({watchedTaxRate}%)</span><span className="tabular-nums">+{currencySymbol} {taxAmount.toFixed(2)}</span></div>
-                                <div className="flex justify-between pt-1.5 mt-1.5 border-t font-semibold text-base"><span>Total</span><span className="tabular-nums">{currencySymbol} {totalAmount.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Discount{watchedDiscount > 0 ? ` (incl. ${watchedDiscount}%)` : ''}</span><span className="tabular-nums text-destructive">-{currencySymbol} {formatNumber(itemDiscounts + discountAmount)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Tax ({watchedTaxRate}%)</span><span className="tabular-nums">+{currencySymbol} {formatNumber(taxAmount)}</span></div>
+                                <div className="flex justify-between pt-1.5 mt-1.5 border-t font-semibold text-base"><span>Total</span><span className="tabular-nums">{currencySymbol} {formatNumber(totalAmount)}</span></div>
                                 {!invoiceToEdit && (themeSettings.invoiceApprovalThreshold ?? 0) > 0 && totalAmount > (themeSettings.invoiceApprovalThreshold ?? 0) && (
-                                    <p className="pt-1 flex items-center gap-1 text-xs text-amber-600"><Info className="h-3 w-3" /> Exceeds approval threshold ({currencySymbol} {themeSettings.invoiceApprovalThreshold?.toFixed(2)}). Will be sent for manager approval.</p>
+                                    <p className="pt-1 flex items-center gap-1 text-xs text-amber-600"><Info className="h-3 w-3" /> Exceeds approval threshold ({currencySymbol} {themeSettings.invoiceApprovalThreshold !== undefined ? formatNumber(themeSettings.invoiceApprovalThreshold) : ''}). Will be sent for manager approval.</p>
                                 )}
                             </div>
 
@@ -1341,7 +1484,7 @@ export default function InvoicesPage() {
                                     </Button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={recurringForm.control} name="discount" render={({ field }) => (
                                     <FormItem><FormLabel>Discount (%)</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />

@@ -23,6 +23,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const QUALITY_CHECKS_COLUMNS: ColumnDef[] = [
+  { id: 'poId', label: 'PO ID', locked: true },
+  { id: 'product', label: 'Product' },
+  { id: 'date', label: 'Date' },
+  { id: 'inspector', label: 'Inspector' },
+  { id: 'status', label: 'Status' },
+  { id: 'notes', label: 'Notes' },
+];
 
 const qualityCheckSchema = z.object({
   productionOrderId: z.string().min(1, "Please select a production order."),
@@ -49,6 +60,8 @@ function QualityControlPageInner() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const columnVisibility = useColumnVisibility('quality-checks', QUALITY_CHECKS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const completedProductionOrders = useMemo(() =>
         productionOrders.filter(p => p.status === 'completed'),
@@ -84,7 +97,8 @@ function QualityControlPageInner() {
             <Header title="Quality Control" />
             <Breadcrumb items={[{ label: 'Manufacturing', href: '/manufacturing' }, { label: 'Quality Control' }]} />
             <main className="flex-1 overflow-auto p-4 md:p-6">
-                <div className="flex justify-end mb-4">
+                <div className="flex justify-end mb-4 gap-2">
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     {canManage && (
                         <Button size="sm" onClick={() => setIsFormOpen(true)}>
                             <PlusCircle className="mr-2 h-4 w-4" /> New Quality Check
@@ -97,11 +111,11 @@ function QualityControlPageInner() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>PO ID</TableHead>
-                                    <TableHead>Product</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Inspector</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Notes</TableHead>
+                                    {isVisible('product') && <TableHead>Product</TableHead>}
+                                    {isVisible('date') && <TableHead>Date</TableHead>}
+                                    {isVisible('inspector') && <TableHead>Inspector</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
+                                    {isVisible('notes') && <TableHead>Notes</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             {!isDataLoaded ? (
@@ -111,11 +125,11 @@ function QualityControlPageInner() {
                                 {qualityChecks.map(qc => (
                                     <TableRow key={qc.id}>
                                         <TableCell>{qc.productionOrderId}</TableCell>
-                                        <TableCell>{qc.productName}</TableCell>
-                                        <TableCell>{format(new Date(qc.checkDate), 'PPP')}</TableCell>
-                                        <TableCell>{qc.inspectorName}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[qc.status]} className="capitalize">{qc.status}</Badge></TableCell>
-                                        <TableCell className="max-w-xs truncate">{qc.notes}</TableCell>
+                                        {isVisible('product') && <TableCell>{qc.productName}</TableCell>}
+                                        {isVisible('date') && <TableCell>{format(new Date(qc.checkDate), 'PPP')}</TableCell>}
+                                        {isVisible('inspector') && <TableCell>{qc.inspectorName}</TableCell>}
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[qc.status]} className="capitalize">{qc.status}</Badge></TableCell>}
+                                        {isVisible('notes') && <TableCell className="max-w-xs truncate">{qc.notes}</TableCell>}
                                     </TableRow>
                                 ))}
                             </TableBody>

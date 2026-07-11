@@ -18,9 +18,19 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAppContext } from '@/context/AppContext';
 import type { EmailTemplateConfig, SmtpConfig } from '@/types';
-import { DEFAULT_EMAIL_TEMPLATES, EMAIL_DEPARTMENTS, CATALOG_VERSION, sendTenantEmail, verifySmtpConnection } from '@/lib/email';
+import { DEFAULT_EMAIL_TEMPLATES, EMAIL_DEPARTMENTS, CATALOG_VERSION, sendTenantEmail, verifySmtpConnection, isSmtpConfigured } from '@/lib/email';
 import { format, parseISO } from 'date-fns';
 import { Loader2, Mail, Send, ShieldCheck, Pencil } from '@/components/icons';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const EMAIL_LOG_COLUMNS: ColumnDef[] = [
+  { id: 'sent', label: 'Sent', locked: true },
+  { id: 'department', label: 'Department' },
+  { id: 'recipient', label: 'Recipient' },
+  { id: 'subject', label: 'Subject' },
+  { id: 'status', label: 'Status' },
+];
 
 const DEFAULT_SMTP_CONFIG: SmtpConfig = {
   id: 'default',
@@ -55,7 +65,7 @@ export default function EmailNotificationsSettings() {
   const {
     smtpConfigList, setSmtpConfigList,
     emailTemplates, setEmailTemplates,
-    emailLogs,
+    emailLogs, saveThemeSettings,
     addActivityLog, user, isDataLoaded, companyName,
   } = useAppContext();
   const { toast } = useToast();
@@ -67,6 +77,8 @@ export default function EmailNotificationsSettings() {
   const subjectInputRef = useRef<HTMLInputElement>(null);
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [activeField, setActiveField] = useState<'subject' | 'body'>('body');
+  const emailLogColumnVisibility = useColumnVisibility('email-notification-log', EMAIL_LOG_COLUMNS);
+  const { isVisible: isEmailLogColVisible } = emailLogColumnVisibility;
 
   const savedSmtp = smtpConfigList.find(s => s.id === 'default');
 
@@ -124,6 +136,10 @@ export default function EmailNotificationsSettings() {
       const others = prev.filter(s => s.id !== 'default');
       return [...others, settings];
     });
+    // Non-secret visibility flag: the raw SMTP config is admin-only, so
+    // staff-facing Email buttons key off this themeSettings switch instead
+    // (same pattern as smsGatewayEnabled / whatsappGatewayEnabled).
+    void saveThemeSettings({ emailGatewayEnabled: isSmtpConfigured(settings) });
     addActivityLog('SMTP Settings Updated', `Tenant SMTP configuration updated for host ${data.host}.`);
     toast({ title: 'Settings Saved', description: 'SMTP configuration has been saved.' });
   };
@@ -380,18 +396,23 @@ export default function EmailNotificationsSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Email Log</CardTitle>
-          <CardDescription>The 50 most recent notification emails sent across all departments.</CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle>Email Log</CardTitle>
+              <CardDescription>The 50 most recent notification emails sent across all departments.</CardDescription>
+            </div>
+            <ColumnVisibilityMenu visibility={emailLogColumnVisibility} />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Sent</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead className="hidden md:table-cell">Recipient</TableHead>
-                <TableHead className="hidden lg:table-cell">Subject</TableHead>
-                <TableHead>Status</TableHead>
+                {isEmailLogColVisible('department') && <TableHead>Department</TableHead>}
+                {isEmailLogColVisible('recipient') && <TableHead className="hidden md:table-cell">Recipient</TableHead>}
+                {isEmailLogColVisible('subject') && <TableHead className="hidden lg:table-cell">Subject</TableHead>}
+                {isEmailLogColVisible('status') && <TableHead>Status</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -401,14 +422,16 @@ export default function EmailNotificationsSettings() {
               {sortedLogs.map(log => (
                 <TableRow key={log.id}>
                   <TableCell className="whitespace-nowrap">{format(parseISO(log.sentAt), 'MMM d, yyyy HH:mm')}</TableCell>
-                  <TableCell>{log.department}</TableCell>
-                  <TableCell className="hidden md:table-cell">{log.to}</TableCell>
-                  <TableCell className="hidden lg:table-cell max-w-[280px] truncate">{log.subject}</TableCell>
+                  {isEmailLogColVisible('department') && <TableCell>{log.department}</TableCell>}
+                  {isEmailLogColVisible('recipient') && <TableCell className="hidden md:table-cell">{log.to}</TableCell>}
+                  {isEmailLogColVisible('subject') && <TableCell className="hidden lg:table-cell max-w-[280px] truncate">{log.subject}</TableCell>}
+                  {isEmailLogColVisible('status') && (
                   <TableCell>
                     <Badge variant={log.status === 'sent' ? 'default' : 'destructive'} title={log.error}>
                       {log.status === 'sent' ? 'Sent' : 'Failed'}
                     </Badge>
                   </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

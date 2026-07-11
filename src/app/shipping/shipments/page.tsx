@@ -482,7 +482,7 @@ export default function ShipmentsPage() {
                              <FormField control={form.control} name="estimatedDeliveryDate" render={({ field }) => (
                                 <FormItem className="flex flex-col pt-2"><FormLabel>Estimated Delivery</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                             )}/>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={form.control} name="assignedDriverId" render={({ field }) => (
                                     <FormItem><FormLabel>Assign Driver</FormLabel>
                                         <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select driver" /></SelectTrigger></FormControl>

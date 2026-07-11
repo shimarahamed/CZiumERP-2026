@@ -83,6 +83,8 @@ export default function FinancialRegionalSettings() {
             setFiscalYearStartMonth(localFiscalYearStart);
             setCurrency(localCurrency);
             await saveThemeSettings({
+                currency: localCurrency,
+                fiscalYearStartMonth: localFiscalYearStart,
                 invoicePrefix: local.invoicePrefix,
                 purchaseOrderPrefix: local.purchaseOrderPrefix,
                 invoiceApprovalThreshold: local.invoiceApprovalThreshold ?? 0,
@@ -91,8 +93,10 @@ export default function FinancialRegionalSettings() {
             });
             addActivityLog('Settings Updated', 'Financial & Regional settings were updated.');
             toast({ title: 'Financial & Regional Saved', description: 'Your changes have been saved.' });
-        } catch {
-            toast({ variant: 'destructive', title: 'Save Failed', description: 'Could not save your changes. Please try again.' });
+        } catch (err) {
+            console.error('Failed to save Financial & Regional settings:', err);
+            const description = err instanceof Error ? err.message : 'Could not save your changes. Please try again.';
+            toast({ variant: 'destructive', title: 'Save Failed', description });
         } finally {
             setIsSaving(false);
         }

@@ -1,190 +1,62 @@
 # CZium ERP
 
-CZium ERP is a modern **Enterprise Resource Planning (ERP) system** built with **Next.js, React, and TypeScript**.
-It helps organizations manage **projects, tasks, employees, and budgets** in a simple and efficient way.
+CZium is a multi-tenant ERP built with Next.js, React, TypeScript, Firebase, and Cloud Functions. It covers sales, invoicing, POS, inventory, purchasing, accounting, HR, service, projects, analytics, and tenant administration.
 
-The application provides tools for **project management, task tracking, team collaboration, and budget monitoring**, all in a clean and responsive interface.
-
----
-
-## 🚀 Features
-
-* 📊 **Project Management**
-
-  * Create and manage projects
-  * Track project status and timeline
-  * Assign project managers and team members
-
-* ✅ **Task Management**
-
-  * Add, edit, and delete tasks
-  * Assign tasks to employees
-  * Set priorities and deadlines
-
-* 📅 **Gantt Chart Visualization**
-
-  * Visual timeline of project tasks
-  * Track task progress easily
-
-* 👥 **Team Management**
-
-  * Manage employees
-  * Assign employees to projects
-
-* 💰 **Budget Tracking**
-
-  * Monitor project budget
-  * Track task costs
-  * Visualize budget utilization
-
-* 🔔 **Activity Logs**
-
-  * Track important project updates
-  * Monitor changes and actions
-
-* 📱 **Responsive UI**
-
-  * Works on desktop, tablet, and mobile devices
-
----
-
-## 🛠️ Tech Stack
-
-* **Frontend:** Next.js 15, React, TypeScript
-* **UI Components:** ShadCN UI
-* **Form Handling:** React Hook Form + Zod
-* **Charts:** Gantt Task React
-* **Styling:** Tailwind CSS
-* **Date Handling:** date-fns
-
----
-
-## 📂 Project Structure
-
-```
-CZiumERP
-│
-├── src
-│   ├── app
-│   │   └── projects
-│   │       └── [id]
-│   │           └── page.tsx
-│   ├── components
-│   ├── context
-│   ├── hooks
-│   ├── lib
-│   └── types
-│
-├── public
-├── package.json
-└── README.md
-```
-
----
-
-## ⚙️ Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/shimarahamed/CZiumERP.git
-```
-
-Go to the project directory:
-
-```bash
-cd CZiumERP
-```
+## Local Development
 
 Install dependencies:
 
 ```bash
 npm install
+npm --prefix functions install
 ```
 
-Run the development server:
+Run the web app:
 
 ```bash
 npm run dev
 ```
 
-Open in browser:
+Open:
 
+```text
+http://localhost:9002
 ```
-http://localhost:3000
-```
 
----
-
-## 🏗️ Build for Production
+The dev script is pinned to port `9002`:
 
 ```bash
+next dev --turbopack -p 9002
+```
+
+## Verification
+
+Use these before shipping changes:
+
+```bash
+npm run typecheck
+npm test
 npm run build
-npm start
+npm --prefix functions run build
 ```
 
----
+## Backend And Security Model
 
-## 🌐 Deployment
+- Firebase Authentication carries the tenant and role claims used by the app and Firestore rules.
+- Tenant data is stored under `/tenants/{tenantId}` in Firestore.
+- Invoice posting runs through the `postInvoiceWithLedger` callable Function so invoice IDs, ledger entries, stock levels, lots, serials, service-linked inventory, and activity logs update in one backend transaction.
+- SMTP, SMS, and WhatsApp sends run through callable Cloud Functions. Browser code no longer posts provider credentials to Next API routes.
+- Raw messaging secrets under `smtpConfig`, `smsConfig`, and `whatsappConfig` are readable only by tenant admins in Firestore rules.
 
-This project can be deployed easily on:
+## Key Scripts
 
-* Netlify
-* Vercel
-* Docker
-* Any Node.js hosting platform
+- `npm run dev` - start the Next.js app on port 9002.
+- `npm run typecheck` - run TypeScript checks for the web app.
+- `npm test` - run Vitest tests.
+- `npm run build` - build the Next.js app.
+- `npm --prefix functions run build` - build Firebase Functions.
+- `npm run genkit:dev` - start the Genkit development server.
 
-Example (Netlify):
+## Deployment Notes
 
-1. Connect GitHub repository
-2. Build command:
-
-```
-npm run build
-```
-
-3. Publish directory:
-
-```
-.next
-```
-
----
-
-## 📸 Screenshots
-
-You can add screenshots of:
-
-* Project Dashboard
-* Task List
-* Gantt Chart
-* Budget Tracking
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome.
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit changes
-4. Push your branch
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License**.
-
----
-
-## 👨‍💻 Author
-
-**Shimar Ahamed**
-
-GitHub:
-https://github.com/shimarahamed
-
----
+Deploy Firestore rules and Cloud Functions together when changing backend posting or messaging behavior. The web app depends on the callable Functions for invoice posting and tenant messaging.

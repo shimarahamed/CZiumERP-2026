@@ -11,6 +11,7 @@ import { Printer } from '@/components/icons';
 import { useAppContext } from '@/context/AppContext';
 import { Store as StoreIcon } from '@/components/icons';
 import Image from 'next/image';
+import { formatNumber } from '@/lib/money';
 
 interface FullPurchaseOrderProps {
     purchaseOrder: PurchaseOrder;
@@ -92,8 +93,8 @@ const FullPurchaseOrder = ({ purchaseOrder }: FullPurchaseOrderProps) => {
                                 <TableRow key={`po-item-${index}`}>
                                     <TableCell className="font-medium">{item.productName}</TableCell>
                                     <TableCell className="text-center">{item.quantity}</TableCell>
-                                    <TableCell className="text-right">{currencySymbol} {item.cost.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">{currencySymbol} {(item.cost * item.quantity).toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">{currencySymbol} {formatNumber(item.cost)}</TableCell>
+                                    <TableCell className="text-right">{currencySymbol} {formatNumber(item.cost * item.quantity)}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -105,7 +106,7 @@ const FullPurchaseOrder = ({ purchaseOrder }: FullPurchaseOrderProps) => {
                         <Separator />
                         <div className="flex justify-between font-bold text-lg">
                             <span>Total Order Cost:</span>
-                            <span>{currencySymbol} {purchaseOrder.totalCost.toFixed(2)}</span>
+                            <span>{currencySymbol} {formatNumber(purchaseOrder.totalCost)}</span>
                         </div>
                     </div>
                 </section>

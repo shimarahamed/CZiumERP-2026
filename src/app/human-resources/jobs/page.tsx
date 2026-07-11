@@ -24,6 +24,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const JOB_REQUISITIONS_COLUMNS: ColumnDef[] = [
+  { id: 'title', label: 'Job Title', locked: true },
+  { id: 'department', label: 'Department' },
+  { id: 'status', label: 'Status' },
+  { id: 'createdAt', label: 'Date Created' },
+];
 
 const requisitionSchema = z.object({
   title: z.string().min(1, "Job title is required."),
@@ -54,6 +63,8 @@ export default function JobRequisitionsPage() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const columnVisibility = useColumnVisibility('job-requisitions', JOB_REQUISITIONS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const filteredRequisitions = useMemo(() => {
         if (!searchTerm) return jobRequisitions;
@@ -117,6 +128,7 @@ export default function JobRequisitionsPage() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                         <PlusCircle className="h-4 w-4" /> New Requisition
                     </Button>
@@ -127,9 +139,9 @@ export default function JobRequisitionsPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Job Title</TableHead>
-                                    <TableHead>Department</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Date Created</TableHead>
+                                    {isVisible('department') && <TableHead>Department</TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
+                                    {isVisible('createdAt') && <TableHead>Date Created</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -140,9 +152,9 @@ export default function JobRequisitionsPage() {
                                 {filteredRequisitions.map(req => (
                                     <TableRow key={req.id}>
                                         <TableCell className="font-medium">{req.title}</TableCell>
-                                        <TableCell>{req.department}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[req.status]} className="capitalize">{req.status.replace('-', ' ')}</Badge></TableCell>
-                                        <TableCell>{format(new Date(req.createdAt), 'PPP')}</TableCell>
+                                        {isVisible('department') && <TableCell>{req.department}</TableCell>}
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[req.status]} className="capitalize">{req.status.replace('-', ' ')}</Badge></TableCell>}
+                                        {isVisible('createdAt') && <TableCell>{format(new Date(req.createdAt), 'PPP')}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>

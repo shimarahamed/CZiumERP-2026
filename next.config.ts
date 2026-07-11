@@ -31,6 +31,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }];
   },
+  webpack(config) {
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      '@opentelemetry/exporter-jaeger': false,
+    };
+    return config;
+  },
   typescript: {
     ignoreBuildErrors: false,
   },

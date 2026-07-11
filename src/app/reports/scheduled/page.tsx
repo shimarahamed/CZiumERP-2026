@@ -23,6 +23,17 @@ import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAppContext } from '@/context/AppContext';
 import type { ScheduledReport, ReportFrequency, ReportType } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const SCHEDULED_REPORTS_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', locked: true },
+  { id: 'type', label: 'Type' },
+  { id: 'frequency', label: 'Frequency' },
+  { id: 'recipients', label: 'Recipients' },
+  { id: 'nextRun', label: 'Next Run' },
+  { id: 'active', label: 'Active' },
+];
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
@@ -45,6 +56,8 @@ export default function ScheduledReportsPage() {
   const { toast } = useToast();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [reports, setReports] = useFirestoreCollection<ScheduledReport>('scheduledReports', [], tenantId);
+  const columnVisibility = useColumnVisibility('scheduled-reports', SCHEDULED_REPORTS_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -93,7 +106,8 @@ export default function ScheduledReportsPage() {
       <Header title="Scheduled Reports" />
       <Breadcrumb items={[{ label: 'Reports', href: '/reports' }, { label: 'Scheduled Reports' }]} />
       <main className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <ColumnVisibilityMenu visibility={columnVisibility} />
           <Button size="sm" className="gap-1" onClick={() => setIsFormOpen(v => !v)}>
             <PlusCircle className="h-4 w-4" />
             {isFormOpen ? 'Cancel' : 'New Schedule'}
@@ -159,11 +173,11 @@ export default function ScheduledReportsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Frequency</TableHead>
-                  <TableHead>Recipients</TableHead>
-                  <TableHead>Next Run</TableHead>
-                  <TableHead>Active</TableHead>
+                  {isVisible('type') && <TableHead>Type</TableHead>}
+                  {isVisible('frequency') && <TableHead>Frequency</TableHead>}
+                  {isVisible('recipients') && <TableHead>Recipients</TableHead>}
+                  {isVisible('nextRun') && <TableHead>Next Run</TableHead>}
+                  {isVisible('active') && <TableHead>Active</TableHead>}
                   <TableHead><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
@@ -173,8 +187,9 @@ export default function ScheduledReportsPage() {
                 ) : reports.map(r => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell><Badge variant="secondary">{REPORT_LABELS[r.reportType]}</Badge></TableCell>
-                    <TableCell className="capitalize">{r.frequency}</TableCell>
+                    {isVisible('type') && <TableCell><Badge variant="secondary">{REPORT_LABELS[r.reportType]}</Badge></TableCell>}
+                    {isVisible('frequency') && <TableCell className="capitalize">{r.frequency}</TableCell>}
+                    {isVisible('recipients') && (
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {r.recipients.map(e => (
@@ -184,10 +199,13 @@ export default function ScheduledReportsPage() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{r.nextRunAt?.slice(0, 10)}</TableCell>
+                    )}
+                    {isVisible('nextRun') && <TableCell className="text-sm text-muted-foreground">{r.nextRunAt?.slice(0, 10)}</TableCell>}
+                    {isVisible('active') && (
                     <TableCell>
                       <Switch checked={r.isActive} onCheckedChange={() => toggleActive(r)} />
                     </TableCell>
+                    )}
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

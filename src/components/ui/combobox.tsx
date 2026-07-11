@@ -23,6 +23,8 @@ import {
 export type ComboboxOption = {
     label: string
     value: string
+    /** Optional right-aligned secondary text (e.g. a price) shown in the list. */
+    hint?: string
 }
 
 type ComboboxProps = {
@@ -49,7 +51,9 @@ export function Combobox({
   const [open, setOpen] = React.useState(false)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // modal keeps the list wheel-scrollable when the combobox opens inside a
+    // modal Dialog (Radix otherwise blocks scroll events on the portal).
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -77,19 +81,22 @@ export function Combobox({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.value}
-                  onSelect={(currentValue) => {
-                    onValueChange(currentValue === value ? "" : currentValue)
+                  value={`${option.label} ${option.value}`}
+                  onSelect={() => {
+                    onValueChange(option.value === value ? "" : option.value)
                     setOpen(false)
                   }}
                 >
                   <Check
                     className={cn(
-                      "mr-2 h-4 w-4",
+                      "mr-2 h-4 w-4 shrink-0",
                       value === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  {option.label}
+                  <span className="flex-1 truncate">{option.label}</span>
+                  {option.hint && (
+                    <span className="ml-2 shrink-0 text-xs text-muted-foreground tabular-nums">{option.hint}</span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>

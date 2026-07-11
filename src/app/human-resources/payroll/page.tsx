@@ -13,14 +13,39 @@ import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { buildPayrollLedgerEntries } from '@/lib/posting';
-import { addMoney } from '@/lib/money';
+import { addMoney, formatNumber } from '@/lib/money';
 import type { PayrollRun } from '@/types';
 import { format } from 'date-fns/format';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const PAYROLL_SUMMARY_COLUMNS: ColumnDef[] = [
+  { id: 'employee', label: 'Employee', locked: true },
+  { id: 'department', label: 'Department' },
+  { id: 'salary', label: 'Annual Salary' },
+  { id: 'leaveTaken', label: 'Leave Days Taken' },
+  { id: 'deduction', label: 'Deduction' },
+  { id: 'netPay', label: 'Net Pay' },
+  { id: 'status', label: 'Status' },
+];
+
+const PAYROLL_HISTORY_COLUMNS: ColumnDef[] = [
+  { id: 'period', label: 'Period', locked: true },
+  { id: 'posted', label: 'Posted' },
+  { id: 'gross', label: 'Gross' },
+  { id: 'deductions', label: 'Deductions' },
+  { id: 'net', label: 'Net' },
+  { id: 'postedBy', label: 'Posted By' },
+];
 
 function PayrollPageInner() {
   const { employees, currencySymbol, currentStore, isDataLoaded, user, payrollRuns, setPayrollRuns, setLedgerEntries, addActivityLog } = useAppContext();
   const { toast } = useToast();
   const [isPosting, setIsPosting] = useState(false);
+  const summaryColumnVisibility = useColumnVisibility('payroll-summary', PAYROLL_SUMMARY_COLUMNS);
+  const { isVisible: isSummaryVisible } = summaryColumnVisibility;
+  const historyColumnVisibility = useColumnVisibility('payroll-history', PAYROLL_HISTORY_COLUMNS);
+  const { isVisible: isHistoryVisible } = historyColumnVisibility;
 
   const periodLabel = format(new Date(), 'yyyy-MM');
   const existingRunForPeriod = payrollRuns.find(r => r.periodLabel === periodLabel && r.storeId === (currentStore?.id === 'all' ? undefined : currentStore?.id));
@@ -82,7 +107,7 @@ function PayrollPageInner() {
         return [...entries, ...prev.filter(e => !entryIds.has(e.id))];
       });
       setPayrollRuns(prev => [run, ...prev]);
-      addActivityLog('Payroll Posted', `Posted payroll for ${periodLabel} — ${currencySymbol} ${totalNet.toFixed(2)} net across ${payrollSummary.length} employee(s).`);
+      addActivityLog('Payroll Posted', `Posted payroll for ${periodLabel} — ${currencySymbol} ${formatNumber(totalNet)} net across ${payrollSummary.length} employee(s).`);
       toast({ title: 'Payroll posted', description: `${periodLabel} payroll posted to the general ledger.` });
     } finally {
       setIsPosting(false);
@@ -115,30 +140,35 @@ function PayrollPageInner() {
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Deductions</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-destructive">{currencySymbol} {totalDeductions.toFixed(2)}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-destructive">{currencySymbol} {formatNumber(totalDeductions)}</p></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Net Pay</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold text-green-600">{currencySymbol} {totalNet.toFixed(2)}</p></CardContent>
+            <CardContent><p className="text-2xl font-bold text-green-600">{currencySymbol} {formatNumber(totalNet)}</p></CardContent>
           </Card>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Payroll Summary</CardTitle>
-            <CardDescription>Annual salary breakdown with leave deductions per employee.</CardDescription>
+            <div className="flex items-start justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle>Payroll Summary</CardTitle>
+                <CardDescription>Annual salary breakdown with leave deductions per employee.</CardDescription>
+              </div>
+              <ColumnVisibilityMenu visibility={summaryColumnVisibility} />
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead className="text-right">Annual Salary</TableHead>
-                  <TableHead className="text-right">Leave Days Taken</TableHead>
-                  <TableHead className="text-right">Deduction</TableHead>
-                  <TableHead className="text-right">Net Pay</TableHead>
-                  <TableHead>Status</TableHead>
+                  {isSummaryVisible('department') && <TableHead>Department</TableHead>}
+                  {isSummaryVisible('salary') && <TableHead className="text-right">Annual Salary</TableHead>}
+                  {isSummaryVisible('leaveTaken') && <TableHead className="text-right">Leave Days Taken</TableHead>}
+                  {isSummaryVisible('deduction') && <TableHead className="text-right">Deduction</TableHead>}
+                  {isSummaryVisible('netPay') && <TableHead className="text-right">Net Pay</TableHead>}
+                  {isSummaryVisible('status') && <TableHead>Status</TableHead>}
                 </TableRow>
               </TableHeader>
               {!isDataLoaded ? (
@@ -159,16 +189,18 @@ function PayrollPageInner() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{emp.department || '-'}</TableCell>
-                      <TableCell className="text-right">{currencySymbol} {emp.salary.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{emp.leaveTaken} / {emp.annualLeaveAllowance ?? 20}</TableCell>
-                      <TableCell className="text-right text-destructive">- {currencySymbol} {emp.deduction.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-semibold">{currencySymbol} {emp.netPay.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Badge variant={emp.status === 'Over Leave' ? 'destructive' : 'default'}>
-                          {emp.status}
-                        </Badge>
-                      </TableCell>
+                      {isSummaryVisible('department') && <TableCell>{emp.department || '-'}</TableCell>}
+                      {isSummaryVisible('salary') && <TableCell className="text-right">{currencySymbol} {emp.salary.toLocaleString()}</TableCell>}
+                      {isSummaryVisible('leaveTaken') && <TableCell className="text-right">{emp.leaveTaken} / {emp.annualLeaveAllowance ?? 20}</TableCell>}
+                      {isSummaryVisible('deduction') && <TableCell className="text-right text-destructive">- {currencySymbol} {formatNumber(emp.deduction)}</TableCell>}
+                      {isSummaryVisible('netPay') && <TableCell className="text-right font-semibold">{currencySymbol} {formatNumber(emp.netPay)}</TableCell>}
+                      {isSummaryVisible('status') && (
+                        <TableCell>
+                          <Badge variant={emp.status === 'Over Leave' ? 'destructive' : 'default'}>
+                            {emp.status}
+                          </Badge>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -180,21 +212,33 @@ function PayrollPageInner() {
         {payrollRuns.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Payroll History</CardTitle>
-              <CardDescription>Posted runs — each one produced a balanced entry in the General Ledger.</CardDescription>
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle>Payroll History</CardTitle>
+                  <CardDescription>Posted runs — each one produced a balanced entry in the General Ledger.</CardDescription>
+                </div>
+                <ColumnVisibilityMenu visibility={historyColumnVisibility} />
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
-                <TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Posted</TableHead><TableHead className="text-right">Gross</TableHead><TableHead className="text-right">Deductions</TableHead><TableHead className="text-right">Net</TableHead><TableHead>Posted By</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow>
+                  <TableHead>Period</TableHead>
+                  {isHistoryVisible('posted') && <TableHead>Posted</TableHead>}
+                  {isHistoryVisible('gross') && <TableHead className="text-right">Gross</TableHead>}
+                  {isHistoryVisible('deductions') && <TableHead className="text-right">Deductions</TableHead>}
+                  {isHistoryVisible('net') && <TableHead className="text-right">Net</TableHead>}
+                  {isHistoryVisible('postedBy') && <TableHead>Posted By</TableHead>}
+                </TableRow></TableHeader>
                 <TableBody>
                   {payrollRuns.map(run => (
                     <TableRow key={run.id}>
                       <TableCell className="font-medium">{run.periodLabel}</TableCell>
-                      <TableCell>{format(new Date(run.runDate), 'PPP')}</TableCell>
-                      <TableCell className="text-right">{currencySymbol} {run.totalGross.toFixed(2)}</TableCell>
-                      <TableCell className="text-right text-destructive">- {currencySymbol} {run.totalDeductions.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-semibold">{currencySymbol} {run.totalNet.toFixed(2)}</TableCell>
-                      <TableCell>{run.postedBy}</TableCell>
+                      {isHistoryVisible('posted') && <TableCell>{format(new Date(run.runDate), 'PPP')}</TableCell>}
+                      {isHistoryVisible('gross') && <TableCell className="text-right">{currencySymbol} {formatNumber(run.totalGross)}</TableCell>}
+                      {isHistoryVisible('deductions') && <TableCell className="text-right text-destructive">- {currencySymbol} {formatNumber(run.totalDeductions)}</TableCell>}
+                      {isHistoryVisible('net') && <TableCell className="text-right font-semibold">{currencySymbol} {formatNumber(run.totalNet)}</TableCell>}
+                      {isHistoryVisible('postedBy') && <TableCell>{run.postedBy}</TableCell>}
                     </TableRow>
                   ))}
                 </TableBody>

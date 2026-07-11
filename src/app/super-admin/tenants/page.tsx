@@ -14,10 +14,22 @@ import { usePlatformData } from '@/hooks/use-platform-data';
 import { ALL_MODULES, slugify, createTenantWorkspace, setTenantStatus } from '@/lib/super-admin';
 import { TenantDetailSheet } from '@/components/super-admin/TenantDetailSheet';
 import type { Tenant, Module, VerticalBlueprint } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const TENANTS_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', locked: true },
+  { id: 'id', label: 'ID' },
+  { id: 'blueprint', label: 'Blueprint' },
+  { id: 'modules', label: 'Modules' },
+  { id: 'status', label: 'Status' },
+];
 
 export default function SuperAdminTenantsPage() {
   const { toast } = useToast();
   const { tenants, blueprints } = usePlatformData();
+  const columnVisibility = useColumnVisibility('tenants', TENANTS_COLUMNS);
+  const { isVisible } = columnVisibility;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -128,22 +140,27 @@ export default function SuperAdminTenantsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Tenants</CardTitle>
-          <CardDescription>All client workspaces on this deployment.</CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Tenants</CardTitle>
+              <CardDescription>All client workspaces on this deployment.</CardDescription>
+            </div>
+            <ColumnVisibilityMenu visibility={columnVisibility} />
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>ID</TableHead><TableHead>Blueprint</TableHead><TableHead>Modules</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead>{isVisible('id') && <TableHead>ID</TableHead>}{isVisible('blueprint') && <TableHead>Blueprint</TableHead>}{isVisible('modules') && <TableHead>Modules</TableHead>}{isVisible('status') && <TableHead>Status</TableHead>}<TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {tenants.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tenants yet — create the first workspace above.</TableCell></TableRow>
               ) : tenants.map(t => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{t.id}</TableCell>
-                  <TableCell className="capitalize">{t.blueprintId ?? t.industry ?? '—'}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{t.enabledModules?.length ?? 0} / {t.allowedModules?.length ?? 0} enabled</TableCell>
-                  <TableCell><Badge variant={t.status === 'active' ? 'default' : 'destructive'}>{t.status}</Badge></TableCell>
+                  {isVisible('id') && <TableCell className="font-mono text-xs">{t.id}</TableCell>}
+                  {isVisible('blueprint') && <TableCell className="capitalize">{t.blueprintId ?? t.industry ?? '—'}</TableCell>}
+                  {isVisible('modules') && <TableCell className="text-xs text-muted-foreground">{t.enabledModules?.length ?? 0} / {t.allowedModules?.length ?? 0} enabled</TableCell>}
+                  {isVisible('status') && <TableCell><Badge variant={t.status === 'active' ? 'default' : 'destructive'}>{t.status}</Badge></TableCell>}
                   <TableCell className="text-right space-x-2">
                     <Button size="sm" variant="outline" onClick={() => { setSelectedTenant(t); setDetailOpen(true); }}>View</Button>
                     {t.status === 'active'

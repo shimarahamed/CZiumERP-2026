@@ -34,6 +34,20 @@ export function CustomFieldsFormSection({ entity, value, onChange }: SectionProp
   const data = value ?? {};
   const set = (key: string, v: unknown) => onChange({ ...data, [key]: v });
 
+  /**
+   * Linked number fields auto-fill from `source + offset` whenever the
+   * source value changes. The offset comes from the field definition and
+   * the resulting value stays a normal editable field afterward.
+   */
+  const setSourceField = (f: CustomFieldDefinition, v: number | undefined) => {
+    const next = { ...data, [f.key]: v };
+    for (const dependent of fields) {
+      if (dependent.linkedFrom?.sourceKey !== f.key) continue;
+      next[dependent.key] = v === undefined ? undefined : v + dependent.linkedFrom.offset;
+    }
+    onChange(next);
+  };
+
   return (
     <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">Additional details</p>
@@ -49,23 +63,40 @@ export function CustomFieldsFormSection({ entity, value, onChange }: SectionProp
               </label>
             );
           }
+          const isLinkTarget = f.fieldType === 'number' && !!f.linkedFrom;
           return (
             <div key={f.key} className="space-y-1">
-              <Label htmlFor={id} className="text-xs text-muted-foreground">{f.label}{f.required && <span className="text-destructive"> *</span>}</Label>
+              <Label htmlFor={id} className="text-xs text-muted-foreground flex items-center gap-1">
+                <span>{f.label}{f.required && <span className="text-destructive"> *</span>}</span>
+              </Label>
               {f.fieldType === 'select' ? (
                 <Select value={typeof raw === 'string' ? raw : ''} onValueChange={v => set(f.key, v)}>
                   <SelectTrigger id={id}><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>{(f.options ?? []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
+              ) : isLinkTarget ? (
+                <Input
+                  id={id}
+                  type="number"
+                  value={raw === undefined || raw === null ? '' : String(raw)}
+                  required={f.required}
+                  onChange={e => set(f.key, e.target.value === '' ? undefined : Number(e.target.value))}
+                />
+              ) : f.fieldType === 'number' ? (
+                <Input
+                  id={id}
+                  type="number"
+                  value={raw === undefined || raw === null ? '' : String(raw)}
+                  required={f.required}
+                  onChange={e => setSourceField(f, e.target.value === '' ? undefined : Number(e.target.value))}
+                />
               ) : (
                 <Input
                   id={id}
-                  type={f.fieldType === 'number' ? 'number' : f.fieldType === 'date' ? 'date' : 'text'}
+                  type={f.fieldType === 'date' ? 'date' : 'text'}
                   value={raw === undefined || raw === null ? '' : String(raw)}
                   required={f.required}
-                  onChange={e => set(f.key, f.fieldType === 'number'
-                    ? (e.target.value === '' ? undefined : Number(e.target.value))
-                    : e.target.value)}
+                  onChange={e => set(f.key, e.target.value)}
                 />
               )}
             </div>

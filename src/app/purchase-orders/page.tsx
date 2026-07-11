@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { formatNumber } from '@/lib/money';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +42,16 @@ import { useRequirePermission } from '@/hooks/use-require-role';
 import { buildApprovalWorkflow } from '@/lib/approvals';
 import { ApprovalWorkflowPanel } from '@/components/ApprovalWorkflowPanel';
 import { adjustStock, getDefaultWarehouse, receiveLot, receiveSerials } from '@/lib/warehouse';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const PURCHASE_ORDERS_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'PO ID', locked: true },
+    { id: 'vendorName', label: 'Vendor' },
+    { id: 'totalCost', label: 'Total Cost' },
+    { id: 'status', label: 'Status' },
+    { id: 'orderDate', label: 'Order Date' },
+];
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR'];
 const MAX_FILE_SIZE = 512000; // 500 KB
@@ -59,6 +70,11 @@ const poSchema = z.object({
   orderDate: z.date(),
   expectedDeliveryDate: z.date().optional(),
   items: z.array(poItemSchema).min(1, "PO must have at least one item."),
+  paymentTerms: z.string().optional(),
+  discount: z.coerce.number().min(0).optional(),
+  taxRate: z.coerce.number().min(0).optional(),
+  warehouse: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type POFormData = z.infer<typeof poSchema>;
@@ -111,6 +127,8 @@ export default function PurchaseOrdersPage() {
     const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const columnVisibility = useColumnVisibility('purchase-orders', PURCHASE_ORDERS_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<POFormData>({
         resolver: zodResolver(poSchema),
@@ -120,6 +138,11 @@ export default function PurchaseOrdersPage() {
             currency: undefined,
             orderDate: new Date(),
             items: [],
+            paymentTerms: '',
+            discount: undefined,
+            taxRate: undefined,
+            warehouse: '',
+            notes: '',
         },
     });
 
@@ -137,6 +160,10 @@ export default function PurchaseOrdersPage() {
     // falling back to the same admin/manager/inventory-staff defaults as before for any user
     // without a custom role assigned.
     const canManage = useRequirePermission('Supply Chain', 'approve');
+    // Edit/Receive is a lower bar than Approve/Reject — cashiers have 'edit' but not
+    // 'approve' on Supply Chain, so they can edit their own POs and receive stock, but
+    // approval authority stays with admin/manager.
+    const canEdit = useRequirePermission('Supply Chain', 'edit');
     const canCreatePo = useRequirePermission('Supply Chain', 'create');
 
     const poQuery = useMemo(() => {
@@ -209,6 +236,11 @@ export default function PurchaseOrdersPage() {
                 orderDate: new Date(poToEdit.orderDate),
                 expectedDeliveryDate: poToEdit.expectedDeliveryDate ? new Date(poToEdit.expectedDeliveryDate) : undefined,
                 items: poToEdit.items.map(item => ({ productId: item.productId, quantity: item.quantity, cost: item.cost })),
+                paymentTerms: poToEdit.paymentTerms ?? '',
+                discount: poToEdit.discount,
+                taxRate: poToEdit.taxRate,
+                warehouse: poToEdit.warehouse ?? '',
+                notes: poToEdit.notes ?? '',
             });
         } else if (isFormOpen && !poToEdit) {
             form.reset({
@@ -218,6 +250,11 @@ export default function PurchaseOrdersPage() {
                 orderDate: new Date(),
                 expectedDeliveryDate: undefined,
                 items: [],
+                paymentTerms: '',
+                discount: undefined,
+                taxRate: undefined,
+                warehouse: '',
+                notes: '',
             });
         }
     }, [poToEdit, isFormOpen, form]);
@@ -279,6 +316,11 @@ export default function PurchaseOrdersPage() {
                 items: newPOItems,
                 totalCost: newTotalCost,
                 attachments,
+                paymentTerms: data.paymentTerms || undefined,
+                discount: data.discount,
+                taxRate: data.taxRate,
+                warehouse: data.warehouse || undefined,
+                notes: data.notes || undefined,
             };
             setPurchaseOrders(purchaseOrders.map(po => po.id === poToEdit.id ? updatedPO : po));
             toast({ title: "Purchase Order Updated" });
@@ -307,6 +349,11 @@ export default function PurchaseOrdersPage() {
                 items: newPOItems,
                 totalCost: newTotalCost,
                 attachments,
+                paymentTerms: data.paymentTerms || undefined,
+                discount: data.discount,
+                taxRate: data.taxRate,
+                warehouse: data.warehouse || undefined,
+                notes: data.notes || undefined,
             };
             setPurchaseOrders([newPO, ...purchaseOrders]);
             if (workflow) setApprovalWorkflows(prev => [workflow, ...prev]);
@@ -318,7 +365,7 @@ export default function PurchaseOrdersPage() {
                     'Supply Chain',
                     'po-sent-to-vendor',
                     vendor.email,
-                    { poId: newPO.id, vendorName: vendor.name, contactPerson: vendor.contactPerson, amount: `${currencySymbol} ${newTotalCost.toFixed(2)}`, companyName },
+                    { poId: newPO.id, vendorName: vendor.name, contactPerson: vendor.contactPerson, amount: `${currencySymbol} ${formatNumber(newTotalCost)}`, companyName },
                     user?.name ?? 'system'
                 );
             }
@@ -479,7 +526,7 @@ export default function PurchaseOrdersPage() {
                     'Finance',
                     'vendor-bill-received',
                     vendor.email,
-                    { vendorName: vendor.name, amount: `${currencySymbol} ${poToMarkReceived.totalCost.toFixed(2)}` },
+                    { vendorName: vendor.name, amount: `${currencySymbol} ${formatNumber(poToMarkReceived.totalCost)}` },
                     user?.name ?? 'system'
                 );
             }
@@ -517,6 +564,7 @@ export default function PurchaseOrdersPage() {
                             { key: 'expectedDeliveryDate' as const, label: 'Expected Delivery' },
                         ]}
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     {canCreatePo && (
                         <Button size="sm" className="gap-1 w-full sm:w-auto" onClick={() => handleOpenForm()}>
                             <PlusCircle className="h-4 w-4" /> Create Purchase Order
@@ -529,10 +577,10 @@ export default function PurchaseOrdersPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('id')}>PO ID <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('vendorName')}>Vendor <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead className="hidden md:table-cell text-right"><Button variant="ghost" onClick={() => handleSort('totalCost')}>Total Cost <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="hidden lg:table-cell"><Button variant="ghost" onClick={() => handleSort('orderDate')}>Order Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
+                                    {isVisible('vendorName') && <TableHead><Button variant="ghost" onClick={() => handleSort('vendorName')}>Vendor <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('totalCost') && <TableHead className="hidden md:table-cell text-right"><Button variant="ghost" onClick={() => handleSort('totalCost')}>Total Cost <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('status') && <TableHead>Status</TableHead>}
+                                    {isVisible('orderDate') && <TableHead className="hidden lg:table-cell"><Button variant="ghost" onClick={() => handleSort('orderDate')}>Order Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -543,27 +591,29 @@ export default function PurchaseOrdersPage() {
                                     {filteredPurchaseOrders.map(po => (
                                         <TableRow key={po.id}>
                                             <TableCell className="font-medium">{po.id}</TableCell>
-                                            <TableCell>{po.vendorName}</TableCell>
-                                            <TableCell className="hidden md:table-cell text-right">{getPOCurrencySymbol(po)} {po.totalCost.toFixed(2)}</TableCell>
-                                            <TableCell>
-                                                {po.status === 'cancelled' && po.rejectionReason ? (
-                                                    <TooltipProvider>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Badge variant="destructive" className="capitalize cursor-help">Cancelled</Badge>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>
-                                                                <p className="max-w-xs">Rejected: {po.rejectionReason}</p>
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                    </TooltipProvider>
-                                                ) : (
-                                                    <Badge variant={statusVariant[po.status]} className="capitalize">
-                                                        {po.status.replace('-', ' ')}
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="hidden lg:table-cell">{parseISO(po.orderDate).toLocaleDateString()}</TableCell>
+                                            {isVisible('vendorName') && <TableCell>{po.vendorName}</TableCell>}
+                                            {isVisible('totalCost') && <TableCell className="hidden md:table-cell text-right">{getPOCurrencySymbol(po)} {formatNumber(po.totalCost)}</TableCell>}
+                                            {isVisible('status') && (
+                                                <TableCell>
+                                                    {po.status === 'cancelled' && po.rejectionReason ? (
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Badge variant="destructive" className="capitalize cursor-help">Cancelled</Badge>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p className="max-w-xs">Rejected: {po.rejectionReason}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    ) : (
+                                                        <Badge variant={statusVariant[po.status]} className="capitalize">
+                                                            {po.status.replace('-', ' ')}
+                                                        </Badge>
+                                                    )}
+                                                </TableCell>
+                                            )}
+                                            {isVisible('orderDate') && <TableCell className="hidden lg:table-cell">{parseISO(po.orderDate).toLocaleDateString()}</TableCell>}
                                             <TableCell>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -589,10 +639,10 @@ export default function PurchaseOrdersPage() {
                                                                 </DropdownMenuItem>
                                                             </>
                                                         )}
-                                                        {po.status === 'ordered' && canManage && (
+                                                        {po.status === 'ordered' && canEdit && (
                                                             <DropdownMenuItem onClick={() => { setPoToMarkReceived(po); setReceivingWarehouseId(getDefaultWarehouse(warehouses)?.id ?? ''); }}>Mark as Received</DropdownMenuItem>
                                                         )}
-                                                        {canManage && <DropdownMenuItem onClick={() => handleOpenForm(po)}>Edit</DropdownMenuItem>}
+                                                        {canEdit && <DropdownMenuItem onClick={() => handleOpenForm(po)}>Edit</DropdownMenuItem>}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -665,6 +715,31 @@ export default function PurchaseOrdersPage() {
                                 <FormItem className="flex flex-col pt-2"><FormLabel>Expected Delivery</FormLabel><FormControl><DatePicker date={field.value} setDate={field.onChange} /></FormControl><FormMessage /></FormItem>
                             )} />
 
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                                    <FormItem><FormLabel>Payment Terms</FormLabel><FormControl><Input placeholder="e.g. Net 30" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="warehouse" render={({ field }) => (
+                                    <FormItem><FormLabel>Warehouse</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                                            <FormControl><SelectTrigger><SelectValue placeholder="Select a warehouse" /></SelectTrigger></FormControl>
+                                            <SelectContent>{warehouses.filter(w => !w.deletedAt).map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+                                        </Select><FormMessage />
+                                    </FormItem>
+                                )} />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="discount" render={({ field }) => (
+                                    <FormItem><FormLabel>Discount</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="taxRate" render={({ field }) => (
+                                    <FormItem><FormLabel>Tax (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+                            <FormField control={form.control} name="notes" render={({ field }) => (
+                                <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+
                             <div className="space-y-2">
                                 <FormLabel>Items to Order</FormLabel>
                                 <div className="space-y-2 rounded-lg border p-2">
@@ -707,7 +782,7 @@ export default function PurchaseOrdersPage() {
                                         {attachments.map(att => (
                                             <div key={att.id} className="flex items-center gap-2 text-sm p-1 rounded border bg-muted/30">
                                                 <span className="flex-1 truncate">{att.fileName}</span>
-                                                <span className="text-xs text-muted-foreground shrink-0">{(att.fileSize / 1024).toFixed(1)} KB</span>
+                                                <span className="text-xs text-muted-foreground shrink-0">{formatNumber(att.fileSize / 1024, 1, 1)} KB</span>
                                                 <a href={att.dataUrl} download={att.fileName} className="text-primary underline text-xs shrink-0">Download</a>
                                                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}>
                                                     <X className="h-3 w-3" />
@@ -721,7 +796,7 @@ export default function PurchaseOrdersPage() {
                             <div className="flex justify-end pt-4">
                                 <div className="text-right">
                                     <p className="text-muted-foreground">Total Order Cost</p>
-                                    <p className="text-2xl font-bold">{currencySymbol} {totalCost.toFixed(2)}</p>
+                                    <p className="text-2xl font-bold">{currencySymbol} {formatNumber(totalCost)}</p>
                                 </div>
                             </div>
 

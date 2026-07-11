@@ -3,7 +3,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo , useRef } from 'react';
-import type { Invoice, Customer, Product, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition } from '@/types';
+import type { Invoice, Customer, Product, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition } from '@/types';
 import { initialInvoices, initialCustomers, initialProducts, initialVendors, initialStores, initialUsers, initialPurchaseOrders, initialRfqs, initialAssets, initialItAssets, initialAttendance, initialLeaveRequests, initialEmployees, initialLedgerEntries, initialTaxRates, initialBudgets, initialCandidates, initialPerformanceReviews, initialBillsOfMaterials, initialProductionOrders, initialQualityChecks, initialLeads, initialCampaigns, initialProjects, initialTasks, initialTickets, initialJobRequisitions, initialShipments, initialVendorBills } from '@/lib/data';
 
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
@@ -58,6 +58,9 @@ const defaultThemeSettings: ThemeSettings = {
     invoicePrefix: 'INV-',
     purchaseOrderPrefix: 'PO-',
     disabledModules: [],
+    emailGatewayEnabled: false,
+    smsGatewayEnabled: false,
+    whatsappGatewayEnabled: false,
     loyaltySettings: {
         tiers: {
             Silver: { points: 500, discount: 5 },
@@ -151,6 +154,12 @@ interface AppContextType {
   setEmailTemplates: CollectionSetter<EmailTemplateConfig>;
   emailLogs: EmailLog[];
   setEmailLogs: CollectionSetter<EmailLog>;
+  smsConfigList: SmsConfig[];
+  setSmsConfigList: CollectionSetter<SmsConfig>;
+  whatsappConfigList: WhatsappConfig[];
+  setWhatsappConfigList: CollectionSetter<WhatsappConfig>;
+  messageLogs: MessageLog[];
+  setMessageLogs: CollectionSetter<MessageLog>;
   approvalWorkflows: ApprovalWorkflow[];
   setApprovalWorkflows: CollectionSetter<ApprovalWorkflow>;
   roles: CustomRole[];
@@ -267,6 +276,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // permission-denied errors and toasts on every login.
   const isManagerRole = user?.role === 'admin' || user?.role === 'manager';
   const managerTenantId = isManagerRole ? tenantId : null;
+  const adminTenantId = user?.role === 'admin' ? tenantId : null;
 
   const [invoices, setInvoices, invoicesLoaded] = useFirestoreCollection<Invoice>('invoices', memoizedInitialInvoices, tenantId);
   const [customers, setCustomers, customersLoaded] = useFirestoreCollection<Customer>('customers', memoizedInitialCustomers, tenantId);
@@ -304,9 +314,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useFirestoreCollection<Notification>('notifications', [], tenantId);
   const [refunds, setRefunds] = useFirestoreCollection<Refund>('refunds', [], tenantId);
   const [recurringInvoices, setRecurringInvoices] = useFirestoreCollection<RecurringInvoice>('recurringInvoices', [], managerTenantId);
-  const [smtpConfigList, setSmtpConfigList] = useFirestoreCollection<SmtpConfig>('smtpConfig', [], tenantId);
+  const [smtpConfigList, setSmtpConfigList] = useFirestoreCollection<SmtpConfig>('smtpConfig', [], adminTenantId);
   const [emailTemplates, setEmailTemplates] = useFirestoreCollection<EmailTemplateConfig>('emailTemplates', [], tenantId);
   const [emailLogs, setEmailLogs] = useFirestoreCollection<EmailLog>('emailLogs', [], managerTenantId);
+  const [smsConfigList, setSmsConfigList] = useFirestoreCollection<SmsConfig>('smsConfig', [], adminTenantId);
+  const [whatsappConfigList, setWhatsappConfigList] = useFirestoreCollection<WhatsappConfig>('whatsappConfig', [], adminTenantId);
+  const [messageLogs, setMessageLogs] = useFirestoreCollection<MessageLog>('messageLogs', [], managerTenantId);
   const [approvalWorkflows, setApprovalWorkflows] = useFirestoreCollection<ApprovalWorkflow>('approvalWorkflows', [], tenantId);
   const [roles, setRoles] = useFirestoreCollection<CustomRole>('roles', [], tenantId);
   const [warehouses, setWarehouses, warehousesLoaded] = useFirestoreCollection<Warehouse>('warehouses', [], tenantId);
@@ -374,12 +387,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       try {
+        // Force-refresh so newly-granted claims (role/tenant changes) take
+        // effect without a full re-login. This requires network, though —
+        // if it fails (offline, flaky connection), fall back to the cached
+        // token below instead of nulling tenantId, which would otherwise
+        // wipe every Firestore-backed collection (see useFirestoreCollection)
+        // even though the offline persistence cache has the data available.
         const token = await fbUser.getIdTokenResult(true);
         setTenantId((token.claims.tenantId as string) ?? null);
         setIsSuperAdmin(token.claims.superAdmin === true);
       } catch {
-        setTenantId(null);
-        setIsSuperAdmin(false);
+        try {
+          const cached = await fbUser.getIdTokenResult(false);
+          setTenantId((cached.claims.tenantId as string) ?? null);
+          setIsSuperAdmin(cached.claims.superAdmin === true);
+        } catch {
+          // No cached token available either (e.g. never authenticated
+          // while online) — nothing we can do, stay signed out of tenant.
+          setTenantId(null);
+          setIsSuperAdmin(false);
+        }
       }
     });
     return () => unsub();
@@ -390,6 +417,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const remoteThemeRef = useRef<string | null>(null);
   const themeSettingsRef = useRef<ThemeSettings>(themeSettings);
   useEffect(() => { themeSettingsRef.current = themeSettings; }, [themeSettings]);
+  // Cache of this tenant's super-admin-granted module allowance — the security
+  // rule only lets enabledModules be a subset of this, so every write to it
+  // (self-heal, reactive sync, saveThemeSettings) must intersect against it.
+  // Defaults to ALL_MODULES until the tenant doc is read, which is safe: it
+  // only widens what a write attempts, and the rule still enforces the real
+  // allowance server-side either way.
+  const allowedModulesRef = useRef<string[]>(ALL_MODULES);
+  useEffect(() => {
+    if (!tenantId) return;
+    getDoc(doc(db, 'tenants', tenantId)).then(snap => {
+      const allowed = snap.data()?.allowedModules;
+      if (Array.isArray(allowed)) allowedModulesRef.current = allowed;
+    }).catch(() => {});
+  }, [tenantId]);
   useEffect(() => {
     if (!tenantId) return;
     const ref = doc(db, 'tenants', tenantId, 'settings', 'app');
@@ -409,11 +450,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // roles get denied on data (e.g. invoices, products) that should be visible.
   // On each admin login, reconcile it against the current disabledModules —
   // this doesn't depend on the admin touching Settings to trigger a fix.
+  //
+  // IMPORTANT: the security rule only allows a tenant admin to set enabledModules
+  // to a SUBSET of the tenant doc's own allowedModules (super-admin-granted
+  // allowance). Tenants onboarded via a narrower blueprint (e.g. the 'retail'
+  // template only allows General/Sales/Supply Chain/Finance/System) have an
+  // allowedModules list smaller than the full ALL_MODULES. Writing the full
+  // ALL_MODULES set unconditionally — as this used to do — gets silently
+  // rejected by the rule for those tenants, which also blocked every future
+  // Module-settings save (same enabledModules field, same rule) from persisting,
+  // including simply disabling a module. Intersecting with allowedModules keeps
+  // this self-heal (and every subsequent save) inside what the rule permits.
   useEffect(() => {
     if (!tenantId || !isHydrated || !isAuthenticated || user?.role !== 'admin') return;
-    const wanted = ALL_MODULES.filter(m => !(themeSettings.disabledModules ?? []).includes(m));
     getDoc(doc(db, 'tenants', tenantId)).then(snap => {
-      const current: string[] = snap.data()?.enabledModules ?? [];
+      const data = snap.data();
+      const current: string[] = data?.enabledModules ?? [];
+      const allowed: string[] = data?.allowedModules ?? ALL_MODULES;
+      allowedModulesRef.current = allowed;
+      const wanted = ALL_MODULES.filter(m => allowed.includes(m) && !(themeSettings.disabledModules ?? []).includes(m));
       const isStale = current.length !== wanted.length || wanted.some(m => !current.includes(m));
       if (isStale) {
         setDoc(doc(db, 'tenants', tenantId), { enabledModules: wanted }, { merge: true }).catch(() => {});
@@ -431,8 +486,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // Mirror module toggles onto the tenant root doc so security rules can
     // enforce them server-side (moduleEnabled() reads this field directly —
     // any module missing here is denied for every role, including admin).
+    // Must stay within allowedModulesRef — see its declaration for why.
     if (user?.role === 'admin') {
-      const enabledModules = ALL_MODULES.filter(m => !(themeSettings.disabledModules ?? []).includes(m));
+      const enabledModules = ALL_MODULES.filter(m => allowedModulesRef.current.includes(m) && !(themeSettings.disabledModules ?? []).includes(m));
       setDoc(doc(db, 'tenants', tenantId), { enabledModules }, { merge: true }).catch(() => { /* denied outside allowance */ });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -447,6 +503,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (themeSettings.companyAddress) setCompanyAddress(themeSettings.companyAddress);
   }, [themeSettings.companyName, themeSettings.companyAddress]);
 
+  // currency/fiscalYearStartMonth: same reasoning — used to be localStorage-only,
+  // so it silently reset to the default on a new device/browser or cleared
+  // storage. Now mirrored from themeSettings, which is Firestore-backed.
+  useEffect(() => {
+    if (themeSettings.currency) setCurrency(themeSettings.currency);
+    if (themeSettings.fiscalYearStartMonth) setFiscalYearStartMonth(themeSettings.fiscalYearStartMonth);
+  }, [themeSettings.currency, themeSettings.fiscalYearStartMonth]);
+
   // Explicit save path for Settings-page "Save" buttons: writes straight to
   // Firestore and resolves only once the write completes, so callers can show
   // real save-in-progress feedback instead of relying on the reactive effect
@@ -457,13 +521,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!tenantId) return;
     const json = JSON.stringify(merged);
     remoteThemeRef.current = json;
-    await setDoc(doc(db, 'tenants', tenantId, 'settings', 'app'), { themeSettings: merged }, { merge: true });
+    // Firestore rejects `undefined` field values outright — strip them so an
+    // unset optional field (e.g. approvalRules before it's first configured)
+    // doesn't fail the whole write.
+    const sanitized = JSON.parse(json) as typeof merged;
+    await setDoc(doc(db, 'tenants', tenantId, 'settings', 'app'), { themeSettings: sanitized }, { merge: true });
     // Same mirror as the reactive effect below — needed here too since setting
     // remoteThemeRef above makes that effect see this write as already-synced
     // and skip it, which previously meant Module-tab saves never updated the
-    // enabledModules field the security rules actually enforce.
+    // enabledModules field the security rules actually enforce. Must stay
+    // within allowedModulesRef — see its declaration for why.
     if (user?.role === 'admin') {
-      const enabledModules = ALL_MODULES.filter(m => !(merged.disabledModules ?? []).includes(m));
+      const enabledModules = ALL_MODULES.filter(m => allowedModulesRef.current.includes(m) && !(merged.disabledModules ?? []).includes(m));
       await setDoc(doc(db, 'tenants', tenantId), { enabledModules }, { merge: true }).catch(() => { /* denied outside allowance */ });
     }
   }, [tenantId, user?.role]);
@@ -802,6 +871,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       smtpConfigList, setSmtpConfigList,
       emailTemplates, setEmailTemplates,
       emailLogs, setEmailLogs,
+      smsConfigList, setSmsConfigList,
+      whatsappConfigList, setWhatsappConfigList,
+      messageLogs, setMessageLogs,
       approvalWorkflows, setApprovalWorkflows,
       roles, setRoles,
       warehouses, setWarehouses,

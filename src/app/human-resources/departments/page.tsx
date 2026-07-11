@@ -2,10 +2,12 @@
 
 import { useState, useMemo } from 'react';
 import Header from '@/components/Header';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
@@ -42,16 +44,20 @@ function DepartmentsInner() {
   return (
     <div className="flex flex-col h-full">
       <Header title="Departments & Org Chart" />
+      <Breadcrumb items={[{ label: 'Human Resources', href: '/human-resources/dashboard' }, { label: 'Departments' }]} />
       <main className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         <Card>
           <CardHeader><CardTitle className="text-base">Add department</CardTitle></CardHeader>
           <CardContent className="grid sm:grid-cols-3 gap-4">
             <div className="space-y-2"><Label htmlFor="d-name">Name</Label><Input id="d-name" value={name} onChange={e => setName(e.target.value)} /></div>
             <div className="space-y-2"><Label>Reports to</Label>
-              <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={parentId} onChange={e => setParentId(e.target.value)}>
-                <option value="">(top level)</option>
-                {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              <Select value={parentId || '__top__'} onValueChange={v => setParentId(v === '__top__' ? '' : v)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="(top level)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__top__">(top level)</SelectItem>
+                  {depts.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-end"><Button onClick={add}>Add</Button></div>
           </CardContent>

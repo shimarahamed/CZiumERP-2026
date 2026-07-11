@@ -17,10 +17,23 @@ import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
 import { buildIntercompanyLedgerEntries } from '@/lib/posting';
 import type { IntercompanyTransaction } from '@/types';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { formatNumber } from '@/lib/money';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const INTERCOMPANY_HISTORY_COLUMNS: ColumnDef[] = [
+  { id: 'date', label: 'Date', locked: true },
+  { id: 'from', label: 'From' },
+  { id: 'to', label: 'To' },
+  { id: 'amount', label: 'Amount' },
+  { id: 'description', label: 'Description' },
+];
 
 function IntercompanyPageInner() {
   const { stores, currencySymbol, currency, user, intercompanyTransactions, setIntercompanyTransactions, setLedgerEntries, ledgerEntries, addActivityLog } = useAppContext();
   const { toast } = useToast();
+  const columnVisibility = useColumnVisibility('intercompanyHistory', INTERCOMPANY_HISTORY_COLUMNS);
+  const { isVisible } = columnVisibility;
 
   const [fromStoreId, setFromStoreId] = useState('');
   const [toStoreId, setToStoreId] = useState('');
@@ -54,7 +67,7 @@ function IntercompanyPageInner() {
       return [...entries, ...prev.filter(e => !entryIds.has(e.id))];
     });
     setIntercompanyTransactions(prev => [txn, ...prev]);
-    addActivityLog('Intercompany Transaction Posted', `${storeName(fromStoreId)} → ${storeName(toStoreId)}: ${currencySymbol} ${amt.toFixed(2)} — ${description.trim()}`);
+    addActivityLog('Intercompany Transaction Posted', `${storeName(fromStoreId)} → ${storeName(toStoreId)}: ${currencySymbol} ${formatNumber(amt)} — ${description.trim()}`);
     toast({ title: 'Posted', description: `Due from/Due to entries posted on both entities' books.` });
     setFromStoreId(''); setToStoreId(''); setAmount(''); setDescription('');
   };
@@ -127,8 +140,8 @@ function IntercompanyPageInner() {
                     {[...byAccount.entries()].map(([account, sums]) => (
                       <TableRow key={account}>
                         <TableCell>{account}</TableCell>
-                        <TableCell className="text-right">{sums.debit > 0 ? `${currencySymbol} ${sums.debit.toFixed(2)}` : '-'}</TableCell>
-                        <TableCell className="text-right">{sums.credit > 0 ? `${currencySymbol} ${sums.credit.toFixed(2)}` : '-'}</TableCell>
+                        <TableCell className="text-right">{sums.debit > 0 ? `${currencySymbol} ${formatNumber(sums.debit)}` : '-'}</TableCell>
+                        <TableCell className="text-right">{sums.credit > 0 ? `${currencySymbol} ${formatNumber(sums.credit)}` : '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -140,22 +153,25 @@ function IntercompanyPageInner() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Intercompany History</CardTitle>
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="text-base">Intercompany History</CardTitle>
+              <ColumnVisibilityMenu visibility={columnVisibility} />
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {intercompanyTransactions.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No intercompany transactions posted yet.</p>
             ) : (
               <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead>{isVisible('from') && <TableHead>From</TableHead>}{isVisible('to') && <TableHead>To</TableHead>}{isVisible('amount') && <TableHead className="text-right">Amount</TableHead>}{isVisible('description') && <TableHead>Description</TableHead>}</TableRow></TableHeader>
                 <TableBody>
                   {intercompanyTransactions.map(txn => (
                     <TableRow key={txn.id}>
                       <TableCell>{format(new Date(txn.date), 'PPP')}</TableCell>
-                      <TableCell><Badge variant="outline">{storeName(txn.fromStoreId)}</Badge></TableCell>
-                      <TableCell><Badge variant="outline">{storeName(txn.toStoreId)}</Badge></TableCell>
-                      <TableCell className="text-right font-medium">{currencySymbol} {txn.amount.toFixed(2)}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{txn.description}</TableCell>
+                      {isVisible('from') && <TableCell><Badge variant="outline">{storeName(txn.fromStoreId)}</Badge></TableCell>}
+                      {isVisible('to') && <TableCell><Badge variant="outline">{storeName(txn.toStoreId)}</Badge></TableCell>}
+                      {isVisible('amount') && <TableCell className="text-right font-medium">{currencySymbol} {formatNumber(txn.amount)}</TableCell>}
+                      {isVisible('description') && <TableCell className="text-muted-foreground text-sm">{txn.description}</TableCell>}
                     </TableRow>
                   ))}
                 </TableBody>

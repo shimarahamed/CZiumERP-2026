@@ -17,6 +17,7 @@ import { useAppContext } from "@/context/AppContext";
 import { buildInvoiceLedgerEntries } from '@/lib/posting';
 import type { Invoice } from "@/types";
 import { sendDepartmentEmail } from '@/lib/email';
+import { formatNumber } from '@/lib/money';
 
 export default function PaymentsPage() {
   usePageTitle('Payments');
@@ -70,7 +71,7 @@ export default function PaymentsPage() {
         toast({
             variant: "destructive",
             title: "Amount Exceeds Invoice Total",
-            description: `Payment (${currencySymbol} ${parsedAmount.toFixed(2)}) exceeds invoice total (${currencySymbol} ${selectedInvoice.amount.toFixed(2)}).`,
+            description: `Payment (${currencySymbol} ${formatNumber(parsedAmount)}) exceeds invoice total (${currencySymbol} ${formatNumber(selectedInvoice.amount)}).`,
         });
         return;
     }
@@ -106,7 +107,7 @@ export default function PaymentsPage() {
                 'Sales & Customers',
                 'payment-received',
                 customer.email,
-                { customerName: customer.name, invoiceId: selectedInvoiceId, amount: `${currencySymbol} ${parsedAmount.toFixed(2)}`, companyName },
+                { customerName: customer.name, invoiceId: selectedInvoiceId, amount: `${currencySymbol} ${formatNumber(parsedAmount)}`, companyName },
                 user?.name ?? 'system'
             );
         }
@@ -145,7 +146,7 @@ export default function PaymentsPage() {
                             return (
                                 <SelectItem key={invoice.id} value={invoice.id}>
                                     <div className="truncate">
-                                        {invoice.id} - {invoice.customerName || 'Walk-in'} - {currencySymbol} {invoice.amount.toFixed(2)}
+                                        {invoice.id} - {invoice.customerName || 'Walk-in'} - {currencySymbol} {formatNumber(invoice.amount)}
                                         {currentStore?.id === 'all' && store && <span className="text-muted-foreground ml-2">({store.name})</span>}
                                     </div>
                                 </SelectItem>

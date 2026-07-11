@@ -24,7 +24,16 @@ import Header from "@/components/Header";
 import { useAppContext } from "@/context/AppContext";
 import { TableSkeleton } from '@/components/TableSkeleton';
 import type { RFQ, RFQItem } from "@/types";
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 type RFQStatus = RFQ['status'];
+
+const RFQ_COLUMNS: ColumnDef[] = [
+    { id: 'id', label: 'RFQ ID', locked: true },
+    { id: 'creationDate', label: 'Date' },
+    { id: 'status', label: 'Status' },
+    { id: 'vendors', label: 'Vendors' },
+];
 
 const rfqItemSchema = z.object({
   productId: z.string().min(1, "Please select a product."),
@@ -34,6 +43,9 @@ const rfqItemSchema = z.object({
 const rfqSchema = z.object({
   vendorIds: z.array(z.string()).min(1, "At least one vendor must be selected."),
   items: z.array(rfqItemSchema).min(1, "An RFQ must have at least one item."),
+  deliveryDate: z.string().optional(),
+  paymentTerms: z.string().optional(),
+  remarks: z.string().optional(),
 });
 
 type RFQFormData = z.infer<typeof rfqSchema>;
@@ -60,12 +72,17 @@ export default function RFQPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('creationDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+    const columnVisibility = useColumnVisibility('rfq', RFQ_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<RFQFormData>({
         resolver: zodResolver(rfqSchema),
         defaultValues: {
             vendorIds: [],
             items: [],
+            deliveryDate: '',
+            paymentTerms: '',
+            remarks: '',
         },
     });
 
@@ -74,7 +91,7 @@ export default function RFQPage() {
         name: "items"
     });
     
-    const canManage = user?.role === 'admin' || user?.role === 'manager';
+    const canManage = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier';
 
     const sortedAndFilteredRfqs = useMemo(() => {
         let filtered = rfqs.filter(rfq =>
@@ -114,11 +131,17 @@ export default function RFQPage() {
             form.reset({
                 vendorIds: rfq.vendorIds,
                 items: rfq.items.map(item => ({ productId: item.productId, quantity: item.quantity })),
+                deliveryDate: rfq.deliveryDate ?? '',
+                paymentTerms: rfq.paymentTerms ?? '',
+                remarks: rfq.remarks ?? '',
             });
         } else {
             form.reset({
                 vendorIds: [],
                 items: [{ productId: '', quantity: 1 }],
+                deliveryDate: '',
+                paymentTerms: '',
+                remarks: '',
             });
         }
         setIsFormOpen(true);
@@ -147,6 +170,9 @@ export default function RFQPage() {
                 ...rfqToEdit,
                 items: newRfqItems,
                 vendorIds: data.vendorIds,
+                deliveryDate: data.deliveryDate || undefined,
+                paymentTerms: data.paymentTerms || undefined,
+                remarks: data.remarks || undefined,
             };
             setRfqs(rfqs.map(r => r.id === rfqToEdit.id ? updatedRfq : r));
             toast({ title: "RFQ Updated" });
@@ -161,6 +187,9 @@ export default function RFQPage() {
                 creationDate: format(new Date(), 'yyyy-MM-dd'),
                 items: newRfqItems,
                 vendorIds: data.vendorIds,
+                deliveryDate: data.deliveryDate || undefined,
+                paymentTerms: data.paymentTerms || undefined,
+                remarks: data.remarks || undefined,
             };
             setRfqs([newRfq, ...rfqs]);
             toast({ title: "RFQ Created" });
@@ -181,6 +210,7 @@ export default function RFQPage() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     {canManage && (
                         <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                             <PlusCircle className="h-4 w-4" /> Create RFQ
@@ -193,9 +223,9 @@ export default function RFQPage() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead><Button variant="ghost" onClick={() => handleSort('id')}>RFQ ID <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('creationDate')}>Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                    <TableHead>Vendors</TableHead>
+                                    {isVisible('creationDate') && <TableHead><Button variant="ghost" onClick={() => handleSort('creationDate')}>Date <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('status') && <TableHead><Button variant="ghost" onClick={() => handleSort('status')}>Status <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                    {isVisible('vendors') && <TableHead>Vendors</TableHead>}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -206,9 +236,9 @@ export default function RFQPage() {
                                 {sortedAndFilteredRfqs.map(rfq => (
                                     <TableRow key={rfq.id}>
                                         <TableCell className="font-medium">{rfq.id}</TableCell>
-                                        <TableCell>{parseISO(rfq.creationDate).toLocaleDateString()}</TableCell>
-                                        <TableCell><Badge variant={statusVariant[rfq.status]} className="capitalize">{rfq.status}</Badge></TableCell>
-                                        <TableCell>{rfq.vendorIds.length}</TableCell>
+                                        {isVisible('creationDate') && <TableCell>{parseISO(rfq.creationDate).toLocaleDateString()}</TableCell>}
+                                        {isVisible('status') && <TableCell><Badge variant={statusVariant[rfq.status]} className="capitalize">{rfq.status}</Badge></TableCell>}
+                                        {isVisible('vendors') && <TableCell>{rfq.vendorIds.length}</TableCell>}
                                         <TableCell>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -310,6 +340,18 @@ export default function RFQPage() {
                                     </FormItem>
                                 )}
                             />
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <FormField control={form.control} name="deliveryDate" render={({ field }) => (
+                                    <FormItem><FormLabel>Delivery Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                                    <FormItem><FormLabel>Payment Terms</FormLabel><FormControl><Input placeholder="e.g. Net 30" {...field} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+                            <FormField control={form.control} name="remarks" render={({ field }) => (
+                                <FormItem><FormLabel>Remarks</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
 
                             <DialogFooter>
                                 <Button type="submit">{rfqToEdit ? 'Save Changes' : 'Create RFQ'}</Button>

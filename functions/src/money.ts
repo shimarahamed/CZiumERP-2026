@@ -44,3 +44,27 @@ export function mulMoney(unitPrice: number, quantity: number): number {
 export function percentOf(amount: number, percent: number): number {
   return fromCents(Math.round((toCents(amount) * percent) / 100));
 }
+
+/**
+ * Net line total: unit price x qty, less the line's own discount (if any).
+ * discountType "percent" (default) takes a % off the line; "amount" takes a
+ * fixed amount off EACH UNIT (never below zero). Mirrors src/lib/money.ts.
+ * @param {number} unitPrice Decimal unit price.
+ * @param {number} quantity Line quantity.
+ * @param {number} [discount] Discount value (percent or fixed amount).
+ * @param {"percent" | "amount"} [discountType] Discount kind.
+ * @return {number} The net line total as a decimal dollar amount.
+ */
+export function lineTotal(
+  unitPrice: number,
+  quantity: number,
+  discount = 0,
+  discountType: "percent" | "amount" = "percent",
+): number {
+  const gross = mulMoney(unitPrice, quantity);
+  if (!(discount > 0)) return gross;
+  if (discountType === "amount") {
+    return mulMoney(Math.max(0, addMoney(unitPrice, -discount)), quantity);
+  }
+  return addMoney(gross, -percentOf(gross, discount));
+}

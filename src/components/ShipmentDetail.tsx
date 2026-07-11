@@ -83,7 +83,7 @@ export function ShipmentDetail({ shipment, onClose }: ShipmentDetailProps) {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-4">
                              <h3 className="font-semibold text-lg">Details</h3>
-                             <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 p-4 rounded-lg">
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm bg-muted/50 p-4 rounded-lg">
                                  <div><p className="font-medium text-muted-foreground flex items-center gap-2"><User className="h-4 w-4"/>Customer</p><p>{shipment.customerName}</p></div>
                                  <div className="col-span-2 sm:col-span-1"><p className="font-medium text-muted-foreground flex items-center gap-2"><Map className="h-4 w-4"/>Address</p><p>{shipment.shippingAddress}</p></div>
                                  <div><p className="font-medium text-muted-foreground">Status</p><Badge variant={statusVariant[shipment.status]} className="capitalize">{shipment.status.replace('-', ' ')}</Badge></div>

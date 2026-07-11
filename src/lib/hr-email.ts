@@ -168,10 +168,11 @@ export function buildOffboardingEmail(
 
 /** Sends an email through the tenant's shared SMTP relay. Throws on failure. */
 export async function sendHrEmail(
-  smtp: SmtpConfig,
+  smtp: SmtpConfig | undefined | null,
   message: { to: string; subject: string; html: string; text: string }
 ): Promise<void> {
-  return sendTenantEmail(smtp, message);
+  void smtp;
+  return sendTenantEmail(message);
 }
 
 export const verifySmtpConnection = verifyTenantSmtpConnection;

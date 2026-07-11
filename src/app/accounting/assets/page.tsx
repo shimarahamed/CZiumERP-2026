@@ -27,6 +27,16 @@ import { MoreHorizontal, PlusCircle, ArrowUpDown, Filter } from '@/components/ic
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const ASSETS_COLUMNS: ColumnDef[] = [
+    { id: 'name', label: 'Asset Name', locked: true },
+    { id: 'category', label: 'Category' },
+    { id: 'status', label: 'Status' },
+    { id: 'location', label: 'Location' },
+    { id: 'assignedTo', label: 'Assigned To' },
+];
 
 const assetSchema = z.object({
   name: z.string().min(1, "Asset name is required."),
@@ -81,7 +91,9 @@ function AssetsPageInner() {
     });
 
     const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager';
-    
+    const columnVisibility = useColumnVisibility('assets', ASSETS_COLUMNS);
+    const { isVisible } = columnVisibility;
+
     const sortedAndFilteredAssets = useMemo(() => {
         let filtered = [...assets].map(asset => {
             const assignedUser = asset.assignedTo ? usersMap.get(asset.assignedTo) : undefined;
@@ -256,6 +268,7 @@ function AssetsPageInner() {
                             </div>
                         </PopoverContent>
                     </Popover>
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                         <PlusCircle className="h-4 w-4" />
                         Add Asset
@@ -271,26 +284,34 @@ function AssetsPageInner() {
                                             Asset Name <ArrowUpDown className="ml-2 h-4 w-4" />
                                         </Button>
                                     </TableHead>
+                                    {isVisible('category') && (
                                     <TableHead>
                                          <Button variant="ghost" onClick={() => handleSort('category')}>
                                             Category <ArrowUpDown className="ml-2 h-4 w-4" />
                                         </Button>
                                     </TableHead>
+                                    )}
+                                    {isVisible('status') && (
                                     <TableHead>
                                          <Button variant="ghost" onClick={() => handleSort('status')}>
                                             Status <ArrowUpDown className="ml-2 h-4 w-4" />
                                         </Button>
                                     </TableHead>
+                                    )}
+                                    {isVisible('location') && (
                                     <TableHead className="hidden md:table-cell">
                                         <Button variant="ghost" onClick={() => handleSort('location')}>
                                             Location <ArrowUpDown className="ml-2 h-4 w-4" />
                                         </Button>
                                     </TableHead>
+                                    )}
+                                    {isVisible('assignedTo') && (
                                     <TableHead className="hidden md:table-cell">
                                         <Button variant="ghost" onClick={() => handleSort('assignedUserName')}>
                                             Assigned To <ArrowUpDown className="ml-2 h-4 w-4" />
                                         </Button>
                                     </TableHead>
+                                    )}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -308,10 +329,10 @@ function AssetsPageInner() {
                                                     {asset.category}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="hidden md:table-cell">{asset.category}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[asset.status]} className="capitalize">{asset.status.replace('-', ' ')}</Badge></TableCell>
-                                            <TableCell className="hidden md:table-cell">{locationName}</TableCell>
-                                            <TableCell className="hidden md:table-cell">{asset.assignedUserName}</TableCell>
+                                            {isVisible('category') && <TableCell className="hidden md:table-cell">{asset.category}</TableCell>}
+                                            {isVisible('status') && <TableCell><Badge variant={statusVariant[asset.status]} className="capitalize">{asset.status.replace('-', ' ')}</Badge></TableCell>}
+                                            {isVisible('location') && <TableCell className="hidden md:table-cell">{locationName}</TableCell>}
+                                            {isVisible('assignedTo') && <TableCell className="hidden md:table-cell">{asset.assignedUserName}</TableCell>}
                                             <TableCell>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>

@@ -10,6 +10,7 @@ import { format, parseISO } from 'date-fns';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Combobox } from './ui/combobox';
 import { useToast } from '@/hooks/use-toast';
+import { formatNumber } from '@/lib/money';
 
 interface ITAssetDetailProps {
     asset: ITAsset;

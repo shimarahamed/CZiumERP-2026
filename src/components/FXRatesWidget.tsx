@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, TrendingUp } from '@/components/icons';
 import type { Currency } from '@/types';
+import { formatNumber } from '@/lib/money';
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR'];
 
@@ -47,7 +48,7 @@ export function FXRatesWidget() {
                 <div key={c} className="flex items-center justify-between text-sm py-0.5 border-b last:border-0">
                   <span className="font-medium">{c}</span>
                   <span className="text-muted-foreground text-xs">{sym}</span>
-                  <span className="font-mono tabular-nums">{rate?.toFixed(4) ?? '—'}</span>
+                  <span className="font-mono tabular-nums">{rate != null ? formatNumber(rate, 4, 4) : '—'}</span>
                 </div>
               );
             })}

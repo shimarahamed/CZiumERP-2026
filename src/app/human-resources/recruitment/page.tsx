@@ -28,6 +28,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Label } from '@/components/ui/label';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const RECRUITMENT_COLUMNS: ColumnDef[] = [
+  { id: 'candidate', label: 'Candidate', locked: true },
+  { id: 'position', label: 'Position Applied For' },
+  { id: 'status', label: 'Status' },
+  { id: 'applicationDate', label: 'Application Date' },
+];
 
 const candidateSchema = z.object({
   name: z.string().min(1, "Name is required."),
@@ -75,6 +84,8 @@ export default function RecruitmentPage() {
     const [candidateToEdit, setCandidateToEdit] = useState<Candidate | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [view, setView] = useState<'kanban' | 'list'>('kanban');
+    const columnVisibility = useColumnVisibility('recruitment-candidates', RECRUITMENT_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     // State for the simple feedback form
     const [newFeedbackNotes, setNewFeedbackNotes] = useState('');
@@ -221,6 +232,7 @@ export default function RecruitmentPage() {
                             <Button variant={view === 'kanban' ? 'default' : 'outline'} size="icon" onClick={() => setView('kanban')}><LayoutGrid className="h-4 w-4" /></Button>
                             <Button variant={view === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setView('list')}><List className="h-4 w-4" /></Button>
                         </div>
+                        {view === 'list' && <ColumnVisibilityMenu visibility={columnVisibility} />}
                         <Button size="sm" className="gap-1" onClick={() => handleOpenForm(null)}>
                             <PlusCircle className="h-4 w-4" /> Add Candidate
                         </Button>
@@ -284,9 +296,9 @@ export default function RecruitmentPage() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Candidate</TableHead>
-                                        <TableHead>Position Applied For</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Application Date</TableHead>
+                                        {isVisible('position') && <TableHead>Position Applied For</TableHead>}
+                                        {isVisible('status') && <TableHead>Status</TableHead>}
+                                        {isVisible('applicationDate') && <TableHead>Application Date</TableHead>}
                                         <TableHead><span className="sr-only">Actions</span></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -305,9 +317,9 @@ export default function RecruitmentPage() {
                                                     </div>
                                                 </div>
                                             </TableCell>
-                                            <TableCell>{candidate.positionAppliedFor}</TableCell>
-                                            <TableCell><Badge variant={statusVariant[candidate.status]} className="capitalize">{candidate.status.replace('-', ' ')}</Badge></TableCell>
-                                            <TableCell>{new Date(candidate.applicationDate).toLocaleDateString()}</TableCell>
+                                            {isVisible('position') && <TableCell>{candidate.positionAppliedFor}</TableCell>}
+                                            {isVisible('status') && <TableCell><Badge variant={statusVariant[candidate.status]} className="capitalize">{candidate.status.replace('-', ' ')}</Badge></TableCell>}
+                                            {isVisible('applicationDate') && <TableCell>{new Date(candidate.applicationDate).toLocaleDateString()}</TableCell>}
                                             <TableCell onClick={(e) => e.stopPropagation()}>
                                                  <DropdownMenu>
                                                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>

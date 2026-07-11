@@ -75,18 +75,23 @@ export default function RootLayout({
         <link key="manifest" rel="manifest" href="/manifest.json" />
         <link key="preconnect-gfonts" rel="preconnect" href="https://fonts.googleapis.com" />
         <link key="preconnect-gstatic" rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link key="font-inter" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
         <meta key="theme-color" name="theme-color" content="#5b21b6" />
         {/* Blocking script: apply dark class before first paint to prevent FOUC */}
-        <script key="dark-mode-init" dangerouslySetInnerHTML={{ __html: `(function(){try{var d=localStorage.getItem('czium-dark-mode');var prefersDark=window.matchMedia('(prefers-color-scheme:dark)').matches;if(d==='true'||(d===null&&prefersDark)){document.documentElement.classList.add('dark')}}catch(e){}})();` }} />
+        <script key="dark-mode-init" dangerouslySetInnerHTML={{ __html: `(function(){try{var d=localStorage.getItem('czium-dark-mode');if(d==='true'){document.documentElement.classList.add('dark')}}catch(e){}})();` }} />
       </head>
       <body className="font-body antialiased">
         <AppProvider>
             <PresenceProvider>
               <ErrorBoundary>
                 <DynamicStyles />
+                {/* AutomationRunner must NOT be a sibling of {children} inside
+                    AuthWrapper: that turns AuthWrapper's children into an array
+                    containing the RSC page element, which can't carry a key and
+                    trips React's "unique key" warning on every re-render. */}
+                <AutomationRunner />
                 <AuthWrapper>
-                    <AutomationRunner />
                     {children}
                 </AuthWrapper>
                 <Toaster />

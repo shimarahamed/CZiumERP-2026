@@ -192,7 +192,7 @@
     display: block !important;
     background: white !important;
   }
-  body.printing-invoice .invoice-receipt-view .grid {
+  body.printing-invoice .invoice-receipt-view > .grid {
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -386,4 +386,83 @@
     background-image: linear-gradient(135deg, hsl(var(--primary) / 0.12), hsl(var(--accent) / 0.10));
   }
   .stat-accent-bar { border-left: 3px solid hsl(var(--primary)); }
+}
+
+/* ============================================================
+   Mobile card-view tables (<640px only — tablet/desktop untouched).
+   The Table component stamps data-label from header text onto body
+   cells; here each row becomes a stacked card of "Label  value" lines.
+   Opt out per table with <Table mobileCards={false}>.
+   ============================================================ */
+@media (max-width: 639px) {
+  table.responsive-cards {
+    display: block;
+  }
+  table.responsive-cards thead {
+    display: none;
+  }
+  table.responsive-cards tbody,
+  table.responsive-cards tfoot {
+    display: block;
+  }
+  table.responsive-cards tbody tr,
+  table.responsive-cards tfoot tr {
+    display: block;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    background: hsl(var(--card));
+    padding: 0.625rem 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+  table.responsive-cards tbody tr:last-child {
+    margin-bottom: 0;
+  }
+  /* Card mode shows every field as a labeled line, so undo desktop-only
+     column pruning (hidden sm:table-cell etc.) inside cards. */
+  table.responsive-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.3rem 0;
+    border: none;
+    text-align: right;
+    min-height: unset;
+    height: auto;
+  }
+  table.responsive-cards tbody td::before {
+    content: attr(data-label);
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-align: left;
+    flex-shrink: 0;
+  }
+  /* Unlabeled cells (actions, checkboxes, empty-state colSpan rows)
+     keep left alignment and no label line. */
+  table.responsive-cards tbody td:not([data-label]) {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  table.responsive-cards tbody td:not([data-label])::before {
+    content: none;
+  }
+  /* Long values (names, emails) may wrap instead of overflowing. */
+  table.responsive-cards tbody td > * {
+    min-width: 0;
+  }
+  table.responsive-cards tbody td {
+    overflow-wrap: anywhere;
+  }
+  table.responsive-cards caption {
+    display: block;
+  }
+}
+
+/* Global overflow guard: no page-level horizontal scroll on small screens. */
+@media (max-width: 1023px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
 }

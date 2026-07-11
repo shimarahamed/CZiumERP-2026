@@ -22,6 +22,15 @@ import { useAppContext } from '@/context/AppContext';
 import type { Warehouse } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/TableSkeleton';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const WAREHOUSES_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Warehouse Name', locked: true },
+  { id: 'default', label: 'Default' },
+  { id: 'linkedStore', label: 'Linked Store' },
+  { id: 'address', label: 'Address' },
+];
 
 const warehouseSchema = z.object({
   name: z.string().min(1, "Warehouse name is required."),
@@ -38,6 +47,8 @@ function WarehousesPageInner() {
     const [warehouseToEdit, setWarehouseToEdit] = useState<Warehouse | null>(null);
     const [warehouseToDelete, setWarehouseToDelete] = useState<Warehouse | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const columnVisibility = useColumnVisibility('warehouses', WAREHOUSES_COLUMNS);
+    const { isVisible } = columnVisibility;
 
     const form = useForm<WarehouseFormData>({
         resolver: zodResolver(warehouseSchema),
@@ -127,6 +138,7 @@ function WarehousesPageInner() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                         <PlusCircle className="h-4 w-4" />
                         Add Warehouse
@@ -138,10 +150,10 @@ function WarehousesPageInner() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-[100px]">Default</TableHead>
+                                        {isVisible('default') && <TableHead className="w-[100px]">Default</TableHead>}
                                         <TableHead>Warehouse Name</TableHead>
-                                        <TableHead>Linked Store</TableHead>
-                                        <TableHead>Address</TableHead>
+                                        {isVisible('linkedStore') && <TableHead>Linked Store</TableHead>}
+                                        {isVisible('address') && <TableHead>Address</TableHead>}
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -154,24 +166,26 @@ function WarehousesPageInner() {
                                     )}
                                     {filteredWarehouses.map(warehouse => (
                                         <TableRow key={warehouse.id}>
-                                            <TableCell>
-                                                {warehouse.isDefault ? (
-                                                    <Badge variant="default" className="gap-1.5 pl-2 pr-3">
-                                                        <CheckCircle className="h-3.5 w-3.5"/>
-                                                        Default
-                                                    </Badge>
-                                                ) : (
-                                                    <Button variant="outline" size="sm" onClick={() => makeDefault(warehouse)}>
-                                                        Make Default
-                                                    </Button>
-                                                )}
-                                            </TableCell>
+                                            {isVisible('default') && (
+                                                <TableCell>
+                                                    {warehouse.isDefault ? (
+                                                        <Badge variant="default" className="gap-1.5 pl-2 pr-3">
+                                                            <CheckCircle className="h-3.5 w-3.5"/>
+                                                            Default
+                                                        </Badge>
+                                                    ) : (
+                                                        <Button variant="outline" size="sm" onClick={() => makeDefault(warehouse)}>
+                                                            Make Default
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            )}
                                             <TableCell className="font-medium flex items-center gap-2">
                                                 <Store className="h-4 w-4 text-muted-foreground"/>
                                                 <span>{warehouse.name}</span>
                                             </TableCell>
-                                            <TableCell>{stores.find(s => s.id === warehouse.storeId)?.name ?? '—'}</TableCell>
-                                            <TableCell>{warehouse.address ?? '—'}</TableCell>
+                                            {isVisible('linkedStore') && <TableCell>{stores.find(s => s.id === warehouse.storeId)?.name ?? '—'}</TableCell>}
+                                            {isVisible('address') && <TableCell>{warehouse.address ?? '—'}</TableCell>}
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>

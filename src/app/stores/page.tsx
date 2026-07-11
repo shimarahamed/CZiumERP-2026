@@ -26,6 +26,16 @@ import { useRouter } from 'next/navigation';
 import { TableSkeleton } from '@/components/TableSkeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
+import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+
+const STORES_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Store Name', locked: true },
+  { id: 'status', label: 'Status' },
+  { id: 'address', label: 'Address' },
+  { id: 'currency', label: 'Currency' },
+  { id: 'taxJurisdiction', label: 'Tax Jurisdiction' },
+];
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR'];
 
@@ -49,6 +59,8 @@ function StoresPageInner() {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('name');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const columnVisibility = useColumnVisibility('stores', STORES_COLUMNS);
+    const { isVisible } = columnVisibility;
 
 
     const form = useForm<StoreFormData>({
@@ -179,6 +191,7 @@ function StoresPageInner() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full md:w-auto md:min-w-[250px] bg-secondary"
                     />
+                    <ColumnVisibilityMenu visibility={columnVisibility} />
                     <Button size="sm" className="gap-1" onClick={() => handleOpenForm()}>
                         <PlusCircle className="h-4 w-4" />
                         Add Store
@@ -190,11 +203,11 @@ function StoresPageInner() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-[100px]">Status</TableHead>
+                                        {isVisible('status') && <TableHead className="w-[100px]">Status</TableHead>}
                                         <TableHead><Button variant="ghost" onClick={() => handleSort('name')}>Store Name <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                        <TableHead><Button variant="ghost" onClick={() => handleSort('address')}>Address <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>
-                                        <TableHead>Currency</TableHead>
-                                        <TableHead>Tax Jurisdiction</TableHead>
+                                        {isVisible('address') && <TableHead><Button variant="ghost" onClick={() => handleSort('address')}>Address <ArrowUpDown className="ml-2 h-4 w-4" /></Button></TableHead>}
+                                        {isVisible('currency') && <TableHead>Currency</TableHead>}
+                                        {isVisible('taxJurisdiction') && <TableHead>Tax Jurisdiction</TableHead>}
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -209,6 +222,7 @@ function StoresPageInner() {
                                                 store.id === currentStore?.id && 'bg-muted/50'
                                             )}
                                         >
+                                            {isVisible('status') && (
                                             <TableCell>
                                                 {store.id === currentStore?.id ? (
                                                     <Badge variant="default" className="gap-1.5 pl-2 pr-3">
@@ -221,13 +235,14 @@ function StoresPageInner() {
                                                     </Button>
                                                 )}
                                             </TableCell>
+                                            )}
                                             <TableCell className="font-medium flex items-center gap-2">
                                                 <Store className="h-4 w-4 text-muted-foreground"/>
                                                 <span>{store.name}</span>
                                             </TableCell>
-                                            <TableCell>{store.address}</TableCell>
-                                            <TableCell>{store.functionalCurrency ?? <span className="text-muted-foreground">—</span>}</TableCell>
-                                            <TableCell>{store.taxJurisdiction ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                                            {isVisible('address') && <TableCell>{store.address}</TableCell>}
+                                            {isVisible('currency') && <TableCell>{store.functionalCurrency ?? <span className="text-muted-foreground">—</span>}</TableCell>}
+                                            {isVisible('taxJurisdiction') && <TableCell>{store.taxJurisdiction ?? <span className="text-muted-foreground">—</span>}</TableCell>}
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>

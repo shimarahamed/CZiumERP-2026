@@ -18,6 +18,7 @@ import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
 import { CSVExportButton } from '@/components/CSVExportButton';
 import { REPORT_SOURCE_COLUMNS, runReport } from '@/lib/report-builder';
 import type { ReportAggregate, ReportDefinition, ReportFilter, ReportFilterOperator, ReportSource } from '@/types';
+import { formatNumber } from '@/lib/money';
 
 const SOURCE_LABELS: Record<ReportSource, string> = {
   invoices: 'Invoices',
@@ -281,7 +282,7 @@ function ReportBuilderInner() {
                           {isGrouped ? (
                             <>
                               <TableCell>{(row as { group: string }).group}</TableCell>
-                              <TableCell>{(row as { value: number }).value.toFixed(2)}</TableCell>
+                              <TableCell>{formatNumber((row as { value: number }).value)}</TableCell>
                             </>
                           ) : (
                             columns.map(col => <TableCell key={col}>{String((row as Record<string, unknown>)[col] ?? '')}</TableCell>)
