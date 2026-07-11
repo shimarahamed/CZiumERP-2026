@@ -26,7 +26,7 @@ import {
 } from '@/components/icons';
 import { Textarea } from '@/components/ui/textarea';
 import { getDefaultWarehouse, stockLevelId } from '@/lib/warehouse';
-import { formatNumber, lineTotal } from '@/lib/money';
+import { discountedUnitPrice, formatNumber, lineTotal } from '@/lib/money';
 import { computeStockConsumption } from '@/lib/pos-sale';
 import { iconFor } from '@/lib/product-icon';
 import { cn } from '@/lib/utils';
@@ -496,7 +496,14 @@ function POSInner() {
                     <p className="font-medium text-sm leading-snug line-clamp-2 min-h-[2.5rem]">{p.name}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{p.sku || '—'}</p>
                     <div className="flex items-center justify-between gap-1 mt-2 flex-wrap">
-                      <span className="font-semibold tabular-nums truncate">{currencySymbol} {formatNumber(p.price)}</span>
+                      {(p.discount ?? 0) > 0 ? (
+                        <span className="flex min-w-0 max-w-full flex-col tabular-nums leading-tight">
+                          <span className="truncate text-sm font-semibold">{currencySymbol} {formatNumber(discountedUnitPrice(p.price, p.discount, p.discountType))}</span>
+                          <span className="truncate text-[11px] text-muted-foreground line-through">{currencySymbol} {formatNumber(p.price)}</span>
+                        </span>
+                      ) : (
+                        <span className="font-semibold tabular-nums truncate">{currencySymbol} {formatNumber(p.price)}</span>
+                      )}
                       {stock !== null ? (
                         <span className={cn('text-xs px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap',
                           out ? 'bg-destructive/10 text-destructive'
@@ -530,7 +537,17 @@ function POSInner() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold flex items-center gap-1.5 text-sm"><ShoppingCart className="h-3.5 w-3.5" /> Current sale</h2>
             {cart.length > 0 && (
-              <button onClick={clearSale} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Clear</button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={clearSale}
+                className="h-6 gap-1 border-destructive/40 px-2 text-xs font-semibold text-destructive hover:border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                aria-label="Clear current sale"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </Button>
             )}
           </div>
           <Combobox
@@ -573,7 +590,7 @@ function POSInner() {
                 <p className="text-[11px] text-muted-foreground">
                   {currencySymbol} {formatNumber(l.price)}{l.unit && <span className="ml-0.5">/{l.unit}</span>}
                   {(l.discount ?? 0) > 0 && (
-                    <span className="ml-1 text-green-600 dark:text-green-500 font-medium">
+                    <span className="ml-1 font-medium text-primary">
                       −{l.discountType === 'amount' ? `${currencySymbol}${formatNumber(l.discount!)}` : `${l.discount}%`}
                     </span>
                   )}

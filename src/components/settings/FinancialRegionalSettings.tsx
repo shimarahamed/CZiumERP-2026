@@ -84,6 +84,7 @@ export default function FinancialRegionalSettings() {
             setCurrency(localCurrency);
             await saveThemeSettings({
                 currency: localCurrency,
+                currencySymbol: local.currencySymbol?.trim() || currencySymbols[localCurrency],
                 fiscalYearStartMonth: localFiscalYearStart,
                 invoicePrefix: local.invoicePrefix,
                 purchaseOrderPrefix: local.purchaseOrderPrefix,
@@ -115,9 +116,22 @@ export default function FinancialRegionalSettings() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="currency">Currency</Label>
-                        <Select value={localCurrency} onValueChange={(value) => setLocalCurrency(value as Currency)}><SelectTrigger id="currency"><SelectValue placeholder="Select currency" /></SelectTrigger>
+                        <Select value={localCurrency} onValueChange={(value) => {
+                            const nextCurrency = value as Currency;
+                            setLocalCurrency(nextCurrency);
+                            setLocal(prev => ({ ...prev, currencySymbol: currencySymbols[nextCurrency] }));
+                        }}><SelectTrigger id="currency"><SelectValue placeholder="Select currency" /></SelectTrigger>
                             <SelectContent>{Object.keys(currencySymbols).map(key => <SelectItem key={key} value={key}>{key} ({currencySymbols[key as Currency]})</SelectItem>)}</SelectContent>
                         </Select>
+                        <Input
+                            id="custom-currency"
+                            value={local.currencySymbol ?? currencySymbols[localCurrency]}
+                            onChange={(e) => setLocal(prev => ({ ...prev, currencySymbol: e.target.value }))}
+                            placeholder="Enter currency symbol or display text"
+                            maxLength={12}
+                            disabled={!canManage}
+                        />
+                        <p className="text-xs text-muted-foreground">Choose the currency, then edit how it appears throughout the app.</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

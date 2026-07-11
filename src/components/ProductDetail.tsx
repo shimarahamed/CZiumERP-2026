@@ -48,6 +48,15 @@ const ProductDetail = ({ product, onEdit, onDuplicate }: ProductDetailProps) => 
 
     const FallbackIcon = PRODUCT_ICONS[resolveIconName(product.name, product.iconName)] ?? Package;
     const isService = product.kind === 'service';
+    const linkedServices = !isService
+        ? Array.from(productsMap.values())
+            .filter(service => service.kind === 'service' && !service.deletedAt)
+            .flatMap(service => {
+                const link = service.serviceLinks?.find(item => item.productId === product.id);
+                return link ? [{ service, quantity: link.quantity }] : [];
+            })
+            .sort((a, b) => a.service.name.localeCompare(b.service.name))
+        : [];
 
     return (
         <DialogContent className="sm:max-w-2xl">
@@ -159,6 +168,68 @@ const ProductDetail = ({ product, onEdit, onDuplicate }: ProductDetailProps) => 
                                                     </TableRow>
                                                 );
                                             })}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </>
+                )}
+
+                {!isService && (
+                    <>
+                        <Separator />
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-medium">Linked Services</h3>
+                            {linkedServices.length > 0 ? (
+                                <Card>
+                                    <CardContent className="p-0">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Service</TableHead>
+                                                    <TableHead>Category</TableHead>
+                                                    <TableHead className="text-right">Qty Used per Service</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {linkedServices.map(({ service, quantity }) => (
+                                                    <TableRow key={service.id}>
+                                                        <TableCell className="font-medium">{service.name}</TableCell>
+                                                        <TableCell>{service.category || 'N/A'}</TableCell>
+                                                        <TableCell className="text-right">{quantity}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">This product is not linked to any services.</p>
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {!isService && (product.stockHistory?.length ?? 0) > 0 && (
+                    <>
+                        <Separator />
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-medium">Stock Addition History</h3>
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Source</TableHead><TableHead>User</TableHead><TableHead className="text-right">Change</TableHead><TableHead className="text-right">Stock After</TableHead></TableRow></TableHeader>
+                                        <TableBody>
+                                            {[...(product.stockHistory ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(entry => (
+                                                <TableRow key={entry.id}>
+                                                    <TableCell>{format(parseISO(entry.createdAt), 'PPp')}</TableCell>
+                                                    <TableCell className="capitalize">{entry.source.replaceAll('-', ' ')}</TableCell>
+                                                    <TableCell>{entry.userName || 'N/A'}</TableCell>
+                                                    <TableCell className="text-right font-medium">{entry.quantity > 0 ? '+' : ''}{entry.quantity}</TableCell>
+                                                    <TableCell className="text-right">{entry.newStock}</TableCell>
+                                                </TableRow>
+                                            ))}
                                         </TableBody>
                                     </Table>
                                 </CardContent>

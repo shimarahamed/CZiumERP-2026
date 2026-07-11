@@ -35,11 +35,21 @@ service cloud.firestore {
     function isStaff(tenantId) {
       return inTenant(tenantId) && role() in ['admin', 'manager', 'cashier', 'inventory-staff'];
     }
+    function isSalesStaff(tenantId) {
+      return inTenant(tenantId) && role() in ['admin', 'manager', 'cashier'];
+    }
+    function isSupplyChainStaff(tenantId) {
+      return inTenant(tenantId) && role() in ['admin', 'manager', 'cashier', 'inventory-staff'];
+    }
+    function isManufacturingStaff(tenantId) {
+      return inTenant(tenantId) && role() in ['admin', 'manager', 'inventory-staff'];
+    }
     function tenantActive(tenantId) {
       return get(/databases/$(database)/documents/tenants/$(tenantId)).data.status == 'active';
     }
     function moduleEnabled(tenantId, m) {
-      return m in get(/databases/$(database)/documents/tenants/$(tenantId)).data.enabledModules;
+      return !get(/databases/$(database)/documents/tenants/$(tenantId)).data.keys().hasAny(['enabledModules'])
+        || m in get(/databases/$(database)/documents/tenants/$(tenantId)).data.enabledModules;
     }
 
     // ---------------- Platform-level collections ----------------
@@ -223,26 +233,29 @@ service cloud.firestore {
 
       // ---- Sales & POS ----
       match /invoices/{id} {
-        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, create, update: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
-        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+        allow delete: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /customers/{id} {
-        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, create, update: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
-        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+        allow delete: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /refunds/{id} {
-        allow read, create: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, create: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
-        allow update, delete: if isManager(tenantId) && tenantActive(tenantId);
+        allow update, delete: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /recurringInvoices/{id} {
         allow read, write: if isManager(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /leads/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /campaigns/{id} {
@@ -252,36 +265,52 @@ service cloud.firestore {
 
       // ---- Supply chain & operations ----
       match /products/{id} {
-        allow read, create, update: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, create, update: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
-        allow delete: if isManager(tenantId) && tenantActive(tenantId);
+        allow delete: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
+      match /productCategories/{id} {
+        allow read: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+        allow create, update: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain')
+          && request.resource.data.keys().hasOnly(['id', 'name', 'createdAt'])
+          && request.resource.data.keys().hasAll(['id', 'name'])
+          && request.resource.data.id == id
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 80
+          && (!request.resource.data.keys().hasAny(['createdAt']) || request.resource.data.createdAt is string);
+        allow delete: if isManager(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /vendors/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /purchaseOrders/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /rfqs/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /shipments/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /billsOfMaterials/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isManufacturingStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /productionOrders/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isManufacturingStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /qualityChecks/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isManufacturingStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Manufacturing');
       }
       match /assets/{id} {
@@ -316,18 +345,18 @@ service cloud.firestore {
       }
       // Per-warehouse stock quantities — any staff can adjust via receiving/sales/counts.
       match /stockLevels/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       // Lot/batch detail rows for trackingMode: 'lot' products — same access model
       // as stockLevels, since lots are just a finer-grained stock breakdown.
       match /lots/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       // One doc per physical unit for trackingMode: 'serial' products.
       match /serialUnits/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
       match /activityLogs/{id} {
@@ -358,7 +387,7 @@ service cloud.firestore {
         allow write: if isTenantAdmin(tenantId) && tenantActive(tenantId);
       }
       match /quotations/{id} {
-        allow read, write: if isStaff(tenantId) && tenantActive(tenantId)
+        allow read, write: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /timesheets/{id} {

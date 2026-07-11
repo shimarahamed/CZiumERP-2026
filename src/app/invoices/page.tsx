@@ -261,6 +261,7 @@ export default function InvoicesPage() {
         if (!debouncedSearch) return serverInvoices;
         return serverInvoices.filter(invoice =>
             invoice.id.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            (invoice.predictedId?.toLowerCase().includes(debouncedSearch.toLowerCase()) ?? false) ||
             (invoice.customerName && invoice.customerName.toLowerCase().includes(debouncedSearch.toLowerCase()))
         );
     }, [serverInvoices, debouncedSearch]);
@@ -949,6 +950,14 @@ export default function InvoicesPage() {
     const getInvoiceCurrencySymbol = (inv: Invoice) =>
         inv.currency ? (currencySymbols[inv.currency] ?? inv.currency) : currencySymbol;
 
+    // POS-* is an internal, collision-safe outbox document key. Customers
+    // should see the predicted business invoice number while it awaits sync.
+    const getDisplayInvoiceId = (inv: Invoice) =>
+        inv.postStatus !== 'posted' && inv.predictedId ? inv.predictedId : inv.id;
+
+    const withDisplayInvoiceId = (inv: Invoice): Invoice =>
+        getDisplayInvoiceId(inv) === inv.id ? inv : { ...inv, id: getDisplayInvoiceId(inv) };
+
     const InvoiceTable = ({ invoices, onEdit, onDelete, onView, onViewFull }: { invoices: Invoice[], onEdit: (invoice: Invoice) => void, onDelete: (invoice: Invoice) => void, onView: (invoice: Invoice) => void, onViewFull: (invoice: Invoice) => void }) => (
         <Table>
             <TableHeader>
@@ -968,8 +977,8 @@ export default function InvoicesPage() {
                 {invoices.map(invoice => (
                     <TableRow key={invoice.id}>
                         <TableCell className="font-medium" onClick={() => onViewFull(invoice)}>
-                            <span className="md:hidden font-bold">{invoice.id}</span>
-                            <span className="hidden md:inline">{invoice.id}</span>
+                            <span className="md:hidden font-bold">{getDisplayInvoiceId(invoice)}</span>
+                            <span className="hidden md:inline">{getDisplayInvoiceId(invoice)}</span>
                         </TableCell>
                         {isInvoiceColVisible('customerName') && (
                         <TableCell onClick={() => onViewFull(invoice)}>
@@ -1598,11 +1607,11 @@ export default function InvoicesPage() {
             </Dialog>
 
             <Dialog open={!!viewingInvoice} onOpenChange={(open) => !open && setViewingInvoice(null)}>
-                {viewingInvoice && <InvoiceDetail invoice={viewingInvoice} />}
+                {viewingInvoice && <InvoiceDetail invoice={withDisplayInvoiceId(viewingInvoice)} />}
             </Dialog>
 
             <Dialog open={!!viewingFullInvoice} onOpenChange={(open) => !open && setViewingFullInvoice(null)}>
-                {viewingFullInvoice && <FullInvoice invoice={viewingFullInvoice} />}
+                {viewingFullInvoice && <FullInvoice invoice={withDisplayInvoiceId(viewingFullInvoice)} />}
             </Dialog>
 
             <Dialog open={!!justCreatedInvoice} onOpenChange={(open) => !open && setJustCreatedInvoice(null)}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, writeBatch, type CollectionReference } from 'firebase/firestore';
+import { collection, getDocsFromCache, onSnapshot, doc, writeBatch, type CollectionReference, type QuerySnapshot } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 
 function stripUndefined<T extends object>(obj: T): T {
@@ -14,6 +14,35 @@ function stripUndefined<T extends object>(obj: T): T {
 // Demo seeding is opt-in and must never run against a production tenant.
 const SEED_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO_SEED === 'true';
 const BATCH_LIMIT = 450; // Firestore hard limit is 500 ops per batch
+// These collections are required to render Inventory, POS, Customers and
+// Invoices without waiting for Firestore's offline startup/primary-tab lease.
+// Services live in the products collection.
+const FAST_CACHE_COLLECTIONS = new Set(['products', 'customers', 'invoices', 'stores']);
+
+function fastCacheKey(tenantId: string, collectionName: string) {
+  return `czium-fast-cache:${tenantId}:${collectionName}`;
+}
+
+function readFastCache<T>(tenantId: string, collectionName: string): T[] | null {
+  if (!FAST_CACHE_COLLECTIONS.has(collectionName)) return null;
+  try {
+    const value = localStorage.getItem(fastCacheKey(tenantId, collectionName));
+    if (!value) return null;
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeFastCache<T>(tenantId: string, collectionName: string, value: T[]) {
+  if (!FAST_CACHE_COLLECTIONS.has(collectionName)) return;
+  try {
+    localStorage.setItem(fastCacheKey(tenantId, collectionName), JSON.stringify(value));
+  } catch {
+    // Storage can be unavailable or full; Firestore persistence remains the fallback.
+  }
+}
 
 /**
  * Tenant-scoped realtime collection hook.
@@ -46,10 +75,45 @@ export function useFirestoreCollection<T extends { id: string }>(
 
     const collRef = collection(db, 'tenants', tenantId, collectionName) as CollectionReference<T>;
 
-    let firstSnapshot = true;
-    const unsubscribe = onSnapshot(
-      collRef,
-      (snapshot) => {
+    // POS-critical lists use a small synchronous mirror so they can paint on
+    // the first offline frame, without waiting for Firestore's IndexedDB lease.
+    const fastCached = readFastCache<T>(tenantId, collectionName);
+    if (fastCached) {
+      dataRef.current = fastCached;
+      setData(fastCached);
+      setIsLoaded(true);
+    }
+
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    const applySnapshot = (snapshot: QuerySnapshot<T>) => {
+      if (cancelled) return;
+      const newData = snapshot.docs.map((d) => ({ ...d.data(), id: d.id } as T));
+      // An empty cache event must not erase the faster mirror. A confirmed
+      // server snapshot will still clear it when the collection is truly empty.
+      if (snapshot.empty && snapshot.metadata.fromCache && dataRef.current.length > 0) return;
+      dataRef.current = newData;
+      setData(newData);
+      setIsLoaded(true);
+      writeFastCache(tenantId, collectionName, newData);
+    };
+
+    const hydrateThenListen = async () => {
+      // Read IndexedDB explicitly before opening the network-backed listener.
+      // This avoids an offline cold start being held up by connection retries.
+      try {
+        const cached = await getDocsFromCache(collRef);
+        if (!cached.empty) applySnapshot(cached);
+      } catch {
+        // No usable cache yet; the normal listener below remains authoritative.
+      }
+
+      if (cancelled) return;
+      let firstSnapshot = true;
+      unsubscribe = onSnapshot(
+        collRef,
+        (snapshot) => {
         // One-time demo seed for local/dev environments only
         if (firstSnapshot && SEED_ENABLED && snapshot.empty && initialData.length > 0) {
           const useMockData = typeof window !== 'undefined' ? localStorage.getItem('useMockData') !== 'false' : true;
@@ -66,18 +130,22 @@ export function useFirestoreCollection<T extends { id: string }>(
           }
         }
         firstSnapshot = false;
-        const newData = snapshot.docs.map((d) => ({ ...d.data(), id: d.id } as T));
-        setData(newData);
-        setIsLoaded(true);
-      },
-      (error) => {
-        console.error(`Error fetching ${collectionName}:`, error);
-        errorEmitter.emit('permission-error', { error, collectionName, attemptedData: null });
-        setIsLoaded(true); // Unblock UI even on error
-      }
-    );
+          applySnapshot(snapshot);
+        },
+        (error) => {
+          console.error(`Error fetching ${collectionName}:`, error);
+          errorEmitter.emit('permission-error', { error, collectionName, attemptedData: null });
+          setIsLoaded(true); // Unblock UI even on error
+        }
+      );
+    };
 
-    return () => unsubscribe();
+    void hydrateThenListen();
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionName, tenantId]);
 
@@ -93,6 +161,7 @@ export function useFirestoreCollection<T extends { id: string }>(
       // tick diffs against this update instead of the stale pre-update state.
       dataRef.current = newData;
       setData(newData); // Optimistic update
+      writeFastCache(tenantId, collectionName, newData);
 
       (async () => {
         try {
@@ -134,6 +203,7 @@ export function useFirestoreCollection<T extends { id: string }>(
           console.error(`Firestore update failed for collection: ${collectionName}`, { error });
           dataRef.current = previousData;
           setData(previousData); // Roll back optimistic update
+          writeFastCache(tenantId, collectionName, previousData);
           errorEmitter.emit('rollback', { collectionName });
           errorEmitter.emit('permission-error', { error, collectionName, attemptedData: newData });
         }

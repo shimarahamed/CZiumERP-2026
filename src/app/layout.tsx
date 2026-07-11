@@ -73,6 +73,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <link key="manifest" rel="manifest" href="/manifest.json" />
+        <link key="icon" rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link key="preconnect-gfonts" rel="preconnect" href="https://fonts.googleapis.com" />
         <link key="preconnect-gstatic" rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}

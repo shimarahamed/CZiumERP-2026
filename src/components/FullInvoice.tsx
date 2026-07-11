@@ -15,7 +15,8 @@ import Image from 'next/image';
 import { addMoney, mulMoney, percentOf, formatNumber, lineTotal } from '@/lib/money';
 import { sendTenantEmail, emailShell, escapeHtml, isSmtpConfigured } from '@/lib/email';
 import { sendTenantSms, sendTenantWhatsapp, sendAndLogMessage } from '@/lib/messaging';
-import { nodeToPdfBase64, downloadNodeAsPdf } from '@/lib/invoice-pdf';
+import { nodeToPdfBase64 } from '@/lib/invoice-pdf';
+import { downloadInvoiceDocumentPdf } from '@/lib/native-document-pdf';
 import { CustomFieldsDisplay, useCustomFields } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
@@ -72,18 +73,6 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
         invoice.customData?.[f.key] !== undefined && invoice.customData?.[f.key] !== '' && invoice.customData?.[f.key] !== null
     );
 
-    const handleDownload = async () => {
-        if (!printableRef.current || downloading) return;
-        setDownloading(true);
-        try {
-            await downloadNodeAsPdf(printableRef.current, `Invoice-${invoice.id}.pdf`);
-        } catch (err) {
-            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
-        } finally {
-            setDownloading(false);
-        }
-    };
-
     const handlePrint = () => {
         // When embedded alongside the receipt, scope the print to just the invoice.
         document.body.classList.add('printing-invoice');
@@ -91,6 +80,19 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
         window.print();
         document.body.classList.remove('printing-invoice');
         document.body.classList.remove('print-only-invoice');
+    };
+
+    const handleDownload = async () => {
+        if (!printableRef.current || downloading) return;
+        setDownloading(true);
+        try {
+            await downloadInvoiceDocumentPdf(invoice, { companyName, companyAddress, currencySymbol, themeSettings });
+            toast({ title: 'Invoice downloaded', description: `Invoice ${invoice.id} was saved as a PDF.` });
+        } catch (err) {
+            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
+        } finally {
+            setDownloading(false);
+        }
     };
 
     const Wrapper = embedded ? 'div' : DialogContent;
@@ -609,7 +611,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                 )}
                 <Button onClick={handleDownload} variant="outline" className="flex-1 min-w-0 px-2" disabled={downloading}>
                     {downloading ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Download className="mr-1.5 h-4 w-4 shrink-0" />}
-                    <span className="truncate">{downloading ? 'Saving…' : 'Download'}</span>
+                    <span className="truncate">{downloading ? 'Saving…' : 'Save PDF'}</span>
                 </Button>
                 <Button onClick={handlePrint} variant="outline" className="flex-1 min-w-0 px-2">
                     <Printer className="mr-1.5 h-4 w-4 shrink-0" />

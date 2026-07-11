@@ -38,7 +38,9 @@ yarn-error.log*
 next-env.d.ts
 
 .genkit/*
+# Environment files may contain credentials. Keep only the sanitized template.
 .env*
+!.env.example
 
 # firebase
 firebase-debug.log
@@ -49,3 +51,9 @@ serviceAccountKey.json
 .env
 .env.local
 .env.production
+
+# Local tool state
+.modified
+
+# Local project documentation
+/docs/

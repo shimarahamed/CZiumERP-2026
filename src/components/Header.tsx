@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Search, Bell, ChevronsUpDown, ArrowLeft, MailOpen, WifiOff, Wifi, X, Trash2 } from '@/components/icons';
 import { Input } from './ui/input';
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useAppContext } from '@/context/AppContext';
 import {
   DropdownMenu,
@@ -59,22 +60,8 @@ export default function Header({ title, children, showBackButton = false }: Head
   // the admin left without a pinned store — those users operate across all stores.
   const canViewAllStores = isAdminOrManager || !user?.storeId;
 
-  const [isOnline, setIsOnline] = useState(true);
-  useEffect(() => {
-    const manuallyOffline = () => localStorage.getItem('isOnline') === 'false';
-    const refresh = () => setIsOnline(navigator.onLine && !manuallyOffline());
-    refresh();
-    window.addEventListener('online', refresh);
-    window.addEventListener('offline', refresh);
-    window.addEventListener('storage', refresh);
-    window.addEventListener('czium:online-status', refresh);
-    return () => {
-      window.removeEventListener('online', refresh);
-      window.removeEventListener('offline', refresh);
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('czium:online-status', refresh);
-    };
-  }, []);
+  const isOnline = useOnlineStatus();
+  const isCheckingConnection = isOnline === null;
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-card px-4 md:px-6 sticky top-0 z-10">
@@ -124,18 +111,22 @@ export default function Header({ title, children, showBackButton = false }: Head
               <span
                 className={cn(
                   "hidden sm:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border shrink-0",
-                  isOnline
+                  isCheckingConnection
+                    ? "text-muted-foreground bg-muted/50 border-border"
+                    : isOnline
                     ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
                     : "text-destructive bg-destructive/10 border-destructive/20"
                 )}
               >
-                <span className={cn("h-1.5 w-1.5 rounded-full", isOnline ? "bg-emerald-500" : "bg-destructive animate-pulse")} />
-                {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-                <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
+                <span className={cn("h-1.5 w-1.5 rounded-full", isCheckingConnection ? "bg-muted-foreground" : isOnline ? "bg-emerald-500" : "bg-destructive animate-pulse")} />
+                {isCheckingConnection ? null : isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">{isCheckingConnection ? 'Checking' : isOnline ? 'Online' : 'Offline'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              {isOnline
+              {isCheckingConnection
+                ? 'Checking the internet connection.'
+                : isOnline
                 ? 'Connected — data is syncing live.'
                 : 'You are offline. You can keep working with cached data — POS sales, invoices, and customers you add now will sync automatically once reconnected.'}
             </TooltipContent>

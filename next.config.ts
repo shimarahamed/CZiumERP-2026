@@ -16,13 +16,15 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://firebase.googleapis.com",
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://www.gstatic.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
     ].join('; '),
   },
-  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+  ...(process.env.NODE_ENV === 'production'
+    ? [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' }]
+    : []),
   { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
 
 ];

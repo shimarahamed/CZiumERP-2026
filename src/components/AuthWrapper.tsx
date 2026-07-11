@@ -118,7 +118,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
             <SidebarHeader className="p-4 flex items-center gap-3">
               <div className="p-2 bg-primary/20 rounded-lg flex items-center justify-center h-10 w-10 shrink-0 overflow-hidden">
                 {themeSettings.logoUrl ? (
-                  <Image src={themeSettings.logoUrl} alt={companyName} width={24} height={24} className="object-contain rounded-md" />
+                  <Image src={themeSettings.logoUrl} alt={companyName} width={24} height={24} className="h-6 w-6 rounded-md object-contain" />
                 ) : (
                   <Store className="w-6 h-6 text-primary" />
                 )}

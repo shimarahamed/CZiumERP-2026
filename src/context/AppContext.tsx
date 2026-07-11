@@ -3,7 +3,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo , useRef } from 'react';
-import type { Invoice, Customer, Product, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition } from '@/types';
+import type { Invoice, Customer, Product, ProductCategory, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition } from '@/types';
 import { initialInvoices, initialCustomers, initialProducts, initialVendors, initialStores, initialUsers, initialPurchaseOrders, initialRfqs, initialAssets, initialItAssets, initialAttendance, initialLeaveRequests, initialEmployees, initialLedgerEntries, initialTaxRates, initialBudgets, initialCandidates, initialPerformanceReviews, initialBillsOfMaterials, initialProductionOrders, initialQualityChecks, initialLeads, initialCampaigns, initialProjects, initialTasks, initialTickets, initialJobRequisitions, initialShipments, initialVendorBills } from '@/lib/data';
 
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
@@ -78,6 +78,8 @@ interface AppContextType {
   setCustomers: CollectionSetter<Customer>;
   products: Product[];
   setProducts: CollectionSetter<Product>;
+  productCategories: ProductCategory[];
+  setProductCategories: CollectionSetter<ProductCategory>;
   vendors: Vendor[];
   setVendors: CollectionSetter<Vendor>;
   purchaseOrders: PurchaseOrder[];
@@ -214,6 +216,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // A static object for the "All Stores" view
 const allStoresView: Store = { id: ALL_STORES_ID, name: 'All Stores', address: 'Global Administrator View' };
+const TENANT_CACHE_KEY = 'tenantId';
 
 
 
@@ -275,12 +278,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // inventory-staff never open a listener the rules would reject — avoiding
   // permission-denied errors and toasts on every login.
   const isManagerRole = user?.role === 'admin' || user?.role === 'manager';
+  const isSalesRole = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier';
+  const isManufacturingRole = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'inventory-staff';
   const managerTenantId = isManagerRole ? tenantId : null;
   const adminTenantId = user?.role === 'admin' ? tenantId : null;
+  const salesTenantId = isSalesRole ? tenantId : null;
+  const manufacturingTenantId = isManufacturingRole ? tenantId : null;
 
-  const [invoices, setInvoices, invoicesLoaded] = useFirestoreCollection<Invoice>('invoices', memoizedInitialInvoices, tenantId);
-  const [customers, setCustomers, customersLoaded] = useFirestoreCollection<Customer>('customers', memoizedInitialCustomers, tenantId);
+  const [invoices, setInvoices, invoicesLoaded] = useFirestoreCollection<Invoice>('invoices', memoizedInitialInvoices, salesTenantId);
+  const [customers, setCustomers, customersLoaded] = useFirestoreCollection<Customer>('customers', memoizedInitialCustomers, salesTenantId);
   const [products, setProducts, productsLoaded] = useFirestoreCollection<Product>('products', memoizedInitialProducts, tenantId);
+  const [productCategories, setProductCategories] = useFirestoreCollection<ProductCategory>('productCategories', [], tenantId);
   const [vendors, setVendors] = useFirestoreCollection<Vendor>('vendors', memoizedInitialVendors, tenantId);
   const [purchaseOrders, setPurchaseOrders] = useFirestoreCollection<PurchaseOrder>('purchaseOrders', memoizedInitialPurchaseOrders, tenantId);
   const [vendorBills, setVendorBills] = useFirestoreCollection<VendorBill>('vendorBills', memoizedInitialVendorBills, managerTenantId);
@@ -301,10 +309,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [budgets, setBudgets] = useFirestoreCollection<Budget>('budgets', memoizedInitialBudgets, managerTenantId);
   const [candidates, setCandidates] = useFirestoreCollection<Candidate>('candidates', memoizedInitialCandidates, managerTenantId);
   const [performanceReviews, setPerformanceReviews] = useFirestoreCollection<PerformanceReview>('performanceReviews', memoizedInitialPerformanceReviews, managerTenantId);
-  const [billsOfMaterials, setBillsOfMaterials] = useFirestoreCollection<BillOfMaterials>('billsOfMaterials', memoizedInitialBillsOfMaterials, tenantId);
-  const [productionOrders, setProductionOrders] = useFirestoreCollection<ProductionOrder>('productionOrders', memoizedInitialProductionOrders, tenantId);
-  const [qualityChecks, setQualityChecks] = useFirestoreCollection<QualityCheck>('qualityChecks', memoizedInitialQualityChecks, tenantId);
-  const [leads, setLeads] = useFirestoreCollection<Lead>('leads', memoizedInitialLeads, tenantId);
+  const [billsOfMaterials, setBillsOfMaterials] = useFirestoreCollection<BillOfMaterials>('billsOfMaterials', memoizedInitialBillsOfMaterials, manufacturingTenantId);
+  const [productionOrders, setProductionOrders] = useFirestoreCollection<ProductionOrder>('productionOrders', memoizedInitialProductionOrders, manufacturingTenantId);
+  const [qualityChecks, setQualityChecks] = useFirestoreCollection<QualityCheck>('qualityChecks', memoizedInitialQualityChecks, manufacturingTenantId);
+  const [leads, setLeads] = useFirestoreCollection<Lead>('leads', memoizedInitialLeads, salesTenantId);
   const [campaigns, setCampaigns] = useFirestoreCollection<Campaign>('campaigns', memoizedInitialCampaigns, managerTenantId);
   const [projects, setProjects] = useFirestoreCollection<Project>('projects', memoizedInitialProjects, tenantId);
   const [tasks, setTasks] = useFirestoreCollection<Task>('tasks', memoizedInitialTasks, tenantId);
@@ -312,7 +320,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [jobRequisitions, setJobRequisitions] = useFirestoreCollection<JobRequisition>('jobRequisitions', memoizedInitialJobRequisitions, managerTenantId);
   const [shipments, setShipments] = useFirestoreCollection<Shipment>('shipments', memoizedInitialShipments, tenantId);
   const [notifications, setNotifications] = useFirestoreCollection<Notification>('notifications', [], tenantId);
-  const [refunds, setRefunds] = useFirestoreCollection<Refund>('refunds', [], tenantId);
+  const [refunds, setRefunds] = useFirestoreCollection<Refund>('refunds', [], salesTenantId);
   const [recurringInvoices, setRecurringInvoices] = useFirestoreCollection<RecurringInvoice>('recurringInvoices', [], managerTenantId);
   const [smtpConfigList, setSmtpConfigList] = useFirestoreCollection<SmtpConfig>('smtpConfig', [], adminTenantId);
   const [emailTemplates, setEmailTemplates] = useFirestoreCollection<EmailTemplateConfig>('emailTemplates', [], tenantId);
@@ -358,6 +366,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setIsAuthenticated(storedAuth);
     const storedUser = getStoredState<User | null>('user', null);
     setUser(storedUser);
+    // Restore the collection path before Firebase needs the network. Firestore
+    // rules still authorize every read; this only unlocks its IndexedDB cache.
+    if (storedAuth) setTenantId(getStoredState<string | null>(TENANT_CACHE_KEY, null));
     setCurrency(getStoredState('currency', 'AED'));
     setCompanyName(getStoredState('companyName', 'CZium ERP'));
     setCompanyAddress(getStoredState('companyAddress', '123 Innovation Drive, Tech City, 12345'));
@@ -382,7 +393,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
-        setTenantId(null);
+        // During an offline cold start, keep the last signed-in workspace so
+        // Firestore can open its persistent cache. An explicit logout removes
+        // isAuthenticated and clears tenantId itself.
+        if (!getStoredState('isAuthenticated', false)) setTenantId(null);
         setIsSuperAdmin(false);
         return;
       }
@@ -394,17 +408,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         // wipe every Firestore-backed collection (see useFirestoreCollection)
         // even though the offline persistence cache has the data available.
         const token = await fbUser.getIdTokenResult(true);
-        setTenantId((token.claims.tenantId as string) ?? null);
+        const claimTenantId = (token.claims.tenantId as string) ?? null;
+        setTenantId(claimTenantId);
+        if (claimTenantId) localStorage.setItem(TENANT_CACHE_KEY, JSON.stringify(claimTenantId));
         setIsSuperAdmin(token.claims.superAdmin === true);
       } catch {
         try {
           const cached = await fbUser.getIdTokenResult(false);
-          setTenantId((cached.claims.tenantId as string) ?? null);
+          const claimTenantId = (cached.claims.tenantId as string) ?? null;
+          setTenantId(claimTenantId);
+          if (claimTenantId) localStorage.setItem(TENANT_CACHE_KEY, JSON.stringify(claimTenantId));
           setIsSuperAdmin(cached.claims.superAdmin === true);
         } catch {
           // No cached token available either (e.g. never authenticated
           // while online) — nothing we can do, stay signed out of tenant.
-          setTenantId(null);
+          // Keep the locally restored tenant path so cached POS data remains
+          // available until Firebase authentication reconnects.
           setIsSuperAdmin(false);
         }
       }
@@ -652,10 +671,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const vendorsMap = useMemo(() => new Map(vendors.map(v => [v.id, v])), [vendors]);
   const storesMap = useMemo(() => new Map(stores.map(s => [s.id, s])), [stores]);
 
+  // Column preferences are written through the users collection. Mirror the
+  // saved fields back into the active session user so every table reacts
+  // immediately instead of waiting for a new login.
+  useEffect(() => {
+    if (!user) return;
+    const profile = users.find(candidate => candidate.id === user.id || candidate.email.toLowerCase() === user.email.toLowerCase());
+    if (!profile) return;
+    const visibilityChanged = JSON.stringify(profile.columnPreferences ?? {}) !== JSON.stringify(user.columnPreferences ?? {});
+    const orderChanged = JSON.stringify(profile.columnOrderPreferences ?? {}) !== JSON.stringify(user.columnOrderPreferences ?? {});
+    if (visibilityChanged || orderChanged) {
+      setUser(current => current ? {
+        ...current,
+        columnPreferences: profile.columnPreferences,
+        columnOrderPreferences: profile.columnOrderPreferences,
+      } : current);
+    }
+  }, [users, user]);
+
   // Effect to update currency symbol when currency changes
   useEffect(() => {
-    setCurrencySymbol(currencySymbols[currency]);
-  }, [currency]);
+    setCurrencySymbol(themeSettings.currencySymbol?.trim() || currencySymbols[currency]);
+  }, [currency, themeSettings.currencySymbol]);
 
   const handleSetCurrency = (newCurrency: Currency) => {
     if (currencySymbols[newCurrency]) {
@@ -698,6 +735,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       };
       setIsSuperAdmin(true);
       setTenantId(null);
+      localStorage.removeItem(TENANT_CACHE_KEY);
       setIsAuthenticated(true);
       setUser(saUser);
       setCurrentStore(allStoresView);
@@ -719,6 +757,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch { /* directory read failures must not block login */ }
 
     setTenantId(claimTenantId);
+    localStorage.setItem(TENANT_CACHE_KEY, JSON.stringify(claimTenantId));
     setIsSuperAdmin(false);
 
     // Load (or self-heal) the profile inside the tenant.
@@ -805,6 +844,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('user');
     localStorage.removeItem('currentStoreId');
+    localStorage.removeItem(TENANT_CACHE_KEY);
   }, [user, addActivityLog]);
 
   // Session timeout: auto-logout after 2 hours of inactivity
@@ -835,6 +875,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       invoices, setInvoices,
       customers, setCustomers,
       products, setProducts,
+      productCategories, setProductCategories,
       vendors, setVendors,
       purchaseOrders, setPurchaseOrders,
       vendorBills, setVendorBills,
@@ -898,7 +939,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       themeSettings, setThemeSettings, saveThemeSettings,
       isHydrated,
       isStoreResolving,
-      isDataLoaded: invoicesLoaded && customersLoaded && productsLoaded,
+      isDataLoaded: productsLoaded && (!isSalesRole || (invoicesLoaded && customersLoaded)),
     
       // Derived & Memoized Data Maps
       customersMap,

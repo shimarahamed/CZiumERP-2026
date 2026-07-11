@@ -30,7 +30,7 @@ export default function FirebaseErrorListener() {
                     variant: "destructive",
                     title: `Firestore Error: ${collectionName}`,
                     description: "An error has been thrown to activate the Next.js error overlay with details.",
-                    duration: 10000,
+                    duration: 6000,
                 });
                 setErrorToThrow(enhancedError); // Set state to throw error on next render
             } else {

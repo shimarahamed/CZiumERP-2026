@@ -32,6 +32,8 @@ type ComboboxProps = {
   value?: string
   onValueChange: (value: string) => void
   onSearchChange?: (search: string) => void
+  onCreateOption?: (label: string) => void
+  createOptionLabel?: (label: string) => string
   placeholder?: string
   searchPlaceholder?: string
   emptyText?: string
@@ -43,12 +45,17 @@ export function Combobox({
     value, 
     onValueChange, 
     onSearchChange,
+    onCreateOption,
+    createOptionLabel,
     placeholder, 
     searchPlaceholder, 
     emptyText,
     className
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
+  const [search, setSearch] = React.useState("")
+  const trimmedSearch = search.trim()
+  const canCreate = !!onCreateOption && trimmedSearch.length > 0 && !options.some(option => option.label.toLowerCase() === trimmedSearch.toLowerCase())
 
   return (
     // modal keeps the list wheel-scrollable when the combobox opens inside a
@@ -73,17 +80,50 @@ export function Combobox({
         <Command>
           <CommandInput 
             placeholder={searchPlaceholder || "Search..."}
-            onValueChange={onSearchChange}
+            value={search}
+            onValueChange={(next) => {
+              setSearch(next)
+              onSearchChange?.(next)
+            }}
           />
           <CommandList>
-            <CommandEmpty>{emptyText || "No results found."}</CommandEmpty>
+            <CommandEmpty>
+              {canCreate ? (
+                <button
+                  type="button"
+                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => {
+                    onCreateOption?.(trimmedSearch)
+                    setSearch("")
+                    setOpen(false)
+                  }}
+                >
+                  {createOptionLabel ? createOptionLabel(trimmedSearch) : `Add "${trimmedSearch}"`}
+                </button>
+              ) : (
+                emptyText || "No results found."
+              )}
+            </CommandEmpty>
             <CommandGroup>
+              {canCreate && (
+                <CommandItem
+                  value={`create ${trimmedSearch}`}
+                  onSelect={() => {
+                    onCreateOption?.(trimmedSearch)
+                    setSearch("")
+                    setOpen(false)
+                  }}
+                >
+                  {createOptionLabel ? createOptionLabel(trimmedSearch) : `Add "${trimmedSearch}"`}
+                </CommandItem>
+              )}
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={`${option.label} ${option.value}`}
                   onSelect={() => {
                     onValueChange(option.value === value ? "" : option.value)
+                    setSearch("")
                     setOpen(false)
                   }}
                 >

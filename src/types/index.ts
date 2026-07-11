@@ -17,6 +17,8 @@ export type User = {
   /** Per-table column visibility, keyed by a stable table id (e.g. 'customers', 'inventory').
    *  Each value is the list of column ids to HIDE for that table — absent/unknown ids are shown. */
   columnPreferences?: Record<string, string[]>;
+  /** Per-table ordered column ids. Missing/new columns are appended automatically. */
+  columnOrderPreferences?: Record<string, string[]>;
   /** Store this user is scoped to. Required for non-admin/manager roles so they
    *  land directly in their store on login instead of being asked to pick one. */
   storeId?: string;
@@ -402,6 +404,17 @@ export type ServiceProductLink = {
   quantity: number;
 };
 
+export type StockHistoryEntry = {
+  id: string;
+  quantity: number;
+  previousStock: number;
+  newStock: number;
+  createdAt: string;
+  source: 'initial' | 'manual' | 'duplicate-merge' | 'edit';
+  userName?: string;
+  note?: string;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -413,6 +426,8 @@ export type Product = {
   price: number;
   cost: number;
   stock: number;
+  /** Auditable additions made from initial stock, restocking, edits, or merges. */
+  stockHistory?: StockHistoryEntry[];
   /** Default discount applied to this product's line when sold: a % of the
    *  unit price (discountType 'percent', 0–100) or a fixed amount off each
    *  unit (discountType 'amount'). */
@@ -446,6 +461,12 @@ export type Product = {
   unitOfMeasure?: string;    // e.g. pcs, kg, box
   barcode?: string;
   brand?: string;
+};
+
+export type ProductCategory = {
+  id: string;
+  name: string;
+  createdAt?: string;
 };
 
 export type Department = {
@@ -776,6 +797,8 @@ export type ThemeSettings = {
     // localStorage-only, so it silently reset on a new device/browser/cleared
     // storage. Now rides the tenant settings doc.
     currency?: Currency;
+    /** Optional custom text/symbol used wherever monetary values are displayed. */
+    currencySymbol?: string;
     fiscalYearStartMonth?: number;
 };
 

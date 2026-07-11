@@ -23,7 +23,7 @@ import { CSVExportButton } from '@/components/CSVExportButton';
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from '@/hooks/use-debounce';
 import { useAppContext } from '@/context/AppContext';
-import type { Product } from '@/types';
+import type { Product, ProductCategory } from '@/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -35,18 +35,16 @@ import { Combobox } from '@/components/ui/combobox';
 import ProductDetail from '@/components/ProductDetail';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, CreditCard } from '@/components/icons';
+import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, CreditCard, List } from '@/components/icons';
 import { PRODUCT_ICONS, resolveIconName } from '@/lib/product-icon';
 import { formatNumber, discountedUnitPrice } from '@/lib/money';
 import { cn } from '@/lib/utils';
-import { useFirestoreQuery } from '@/hooks/use-firestore-query';
-import { db } from '@/lib/firebase';
-import { collection, query, orderBy, type Query } from 'firebase/firestore';
 import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
 import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
 const INVENTORY_COLUMNS: ColumnDef[] = [
   { id: 'name', label: 'Product Name', locked: true },
+  { id: 'sku', label: 'SKU' },
   { id: 'type', label: 'Type' },
   { id: 'stock', label: 'Stock' },
   { id: 'status', label: 'Status' },
@@ -99,14 +97,18 @@ const COMMON_UNITS = ['Pcs', 'Kg', 'g', 'Ltr', 'ml', 'Box', 'Pack', 'Dozen', 'Pa
 
 export default function InventoryPage() {
   usePageTitle('Inventory');
-    const { setProducts, products, vendors, addActivityLog, currencySymbol, user, isDataLoaded, tenantId } = useAppContext();
+    const { setProducts, products, productCategories, setProductCategories, vendors, addActivityLog, currencySymbol, user, isDataLoaded } = useAppContext();
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [productToEdit, setProductToEdit] = useState<Product | null>(null);
     const [productToView, setProductToView] = useState<Product | null>(null);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+    const [replacementProductId, setReplacementProductId] = useState('');
+    const [pendingMerge, setPendingMerge] = useState<{ existing: Product; incoming: Product } | null>(null);
     const [productToRestock, setProductToRestock] = useState<Product | null>(null);
     const [restockQty, setRestockQty] = useState('');
+    const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+    const [categoryToDelete, setCategoryToDelete] = useState<ProductCategory | null>(null);
     const [customData, setCustomData] = useState<Record<string, unknown>>({});
     // Product image (data URI) + optional named icon — shown on POS cards.
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
@@ -116,7 +118,7 @@ export default function InventoryPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 20;
     const columnVisibility = useColumnVisibility('inventory', INVENTORY_COLUMNS);
-    const { isVisible } = columnVisibility;
+    const { isVisible, columns: orderedColumns } = columnVisibility;
 
     const form = useForm<ProductFormData>({
         resolver: zodResolver(productSchema),
@@ -159,28 +161,70 @@ export default function InventoryPage() {
     // gate the UI to match so cashiers don't see a Delete action that silently fails.
     const canDelete = user?.role === 'admin' || user?.role === 'manager';
 
-    const productsQuery = useMemo(() => {
-        if (!tenantId) return null;
-        return query(collection(db, 'tenants', tenantId, 'products'), orderBy('name', 'asc')) as Query<Product>;
-    }, [tenantId]);
-
-    const { data: serverProducts } = useFirestoreQuery<Product>(productsQuery);
-
     const vendorOptions = useMemo(() => [
         { label: 'None', value: 'none' },
         ...vendors.map(v => ({ label: v.name, value: v.id })),
     ], [vendors]);
 
+    const categoryOptions = useMemo(() => {
+        const names = new Map<string, string>();
+        productCategories.forEach(category => {
+            const name = category.name.trim();
+            if (name) names.set(name.toLowerCase(), name);
+        });
+        products.forEach(product => {
+            const name = product.category?.trim();
+            if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+        });
+        return [...names.values()]
+            .sort((a, b) => a.localeCompare(b))
+            .map(name => ({ label: name, value: name }));
+    }, [productCategories, products]);
+
+    const addCategory = (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const existing = categoryOptions.find(option => option.label.toLowerCase() === trimmed.toLowerCase());
+        if (existing) {
+            form.setValue('category', existing.value, { shouldDirty: true, shouldValidate: true });
+            return;
+        }
+        const newCategory: ProductCategory = {
+            id: `cat-${Date.now()}`,
+            name: trimmed,
+            createdAt: new Date().toISOString(),
+        };
+        setProductCategories([newCategory, ...productCategories]);
+        form.setValue('category', trimmed, { shouldDirty: true, shouldValidate: true });
+        addActivityLog('Category Added', `Added product category: ${trimmed}`);
+        toast({ title: 'Category added', description: `${trimmed} is now available for products.` });
+    };
+
+    const confirmDeleteCategory = () => {
+        if (!categoryToDelete) return;
+        const categoryName = categoryToDelete.name.trim();
+        setProductCategories(productCategories.filter(category => category.name.trim().toLowerCase() !== categoryName.toLowerCase()));
+        setProducts(products.map(product =>
+            product.category?.trim().toLowerCase() === categoryName.toLowerCase()
+                ? { ...product, category: undefined }
+                : product
+        ));
+        addActivityLog('Category Deleted', `Deleted product category: ${categoryName}`);
+        toast({ title: 'Category deleted', description: `${categoryName} was removed from matching products.` });
+        setCategoryToDelete(null);
+    };
+
     const filteredProducts = useMemo(() => {
-        if (!debouncedSearch) return serverProducts;
+        const sortedProducts = [...products].sort((a, b) => a.name.localeCompare(b.name));
+        if (!debouncedSearch) return sortedProducts;
         const lowercasedFilter = debouncedSearch.toLowerCase();
-        return serverProducts.filter(product =>
+        return sortedProducts.filter(product =>
             product.name.toLowerCase().includes(lowercasedFilter) ||
             (product.sku && product.sku.toLowerCase().includes(lowercasedFilter)) ||
             (product.category && product.category.toLowerCase().includes(lowercasedFilter)) ||
             (product.productType && product.productType.toLowerCase().includes(lowercasedFilter))
         );
-    }, [serverProducts, debouncedSearch]);
+    }, [products, debouncedSearch]);
 
     const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
     const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -193,7 +237,17 @@ export default function InventoryPage() {
             return;
         }
         const newStock = Math.max(0, productToRestock.stock + qty);
-        setProducts(products.map(p => p.id === productToRestock.id ? { ...p, stock: newStock } : p));
+        const appliedQty = newStock - productToRestock.stock;
+        const historyEntry = {
+            id: `stock-${Date.now()}`,
+            quantity: appliedQty,
+            previousStock: productToRestock.stock,
+            newStock,
+            createdAt: new Date().toISOString(),
+            source: 'manual' as const,
+            userName: user?.name,
+        };
+        setProducts(products.map(p => p.id === productToRestock.id ? { ...p, stock: newStock, stockHistory: [...(p.stockHistory ?? []), historyEntry] } : p));
         addActivityLog('Stock Adjusted', `${qty > 0 ? 'Added' : 'Removed'} ${Math.abs(qty)} to ${productToRestock.name} (now ${newStock}).`);
         toast({ title: 'Stock updated', description: `${productToRestock.name} is now at ${newStock}.` });
         setProductToRestock(null);
@@ -209,9 +263,9 @@ export default function InventoryPage() {
         if (product) {
             form.reset({
               ...product,
-              name: duplicate ? `${product.name} (Copy)` : product.name,
-              // A copy is a distinct item — don't carry over the unique identifiers.
-              sku: duplicate ? '' : (product.sku ?? ''),
+              name: product.name,
+              // Keeping name/SKU lets a duplicate be recognized and merged.
+              sku: product.sku ?? '',
               barcode: duplicate ? '' : (product.barcode ?? ''),
               kind: product.kind ?? 'product',
               discount: product.discount ?? 0,
@@ -270,7 +324,22 @@ export default function InventoryPage() {
         };
 
         if (productToEdit) {
-            const updatedProducts = products.map(p => p.id === productToEdit.id ? { ...p, ...productData } : p);
+            const stockIncrease = productData.stock - productToEdit.stock;
+            const updatedProducts = products.map(p => p.id === productToEdit.id ? {
+                ...p,
+                ...productData,
+                ...(stockIncrease > 0 ? {
+                    stockHistory: [...(p.stockHistory ?? []), {
+                        id: `stock-${Date.now()}`,
+                        quantity: stockIncrease,
+                        previousStock: productToEdit.stock,
+                        newStock: productData.stock,
+                        createdAt: new Date().toISOString(),
+                        source: 'edit' as const,
+                        userName: user?.name,
+                    }],
+                } : {}),
+            } : p);
             setProducts(updatedProducts);
             toast({ title: "Product Updated", description: `${data.name} has been updated.` });
             addActivityLog('Product Updated', `Updated product: ${data.name} (ID: ${productToEdit.id})`);
@@ -279,7 +348,26 @@ export default function InventoryPage() {
                 id: `prod-${Date.now()}`,
                 createdAt: new Date().toISOString(),
                 ...productData,
+                ...(productData.stock > 0 ? { stockHistory: [{
+                    id: `stock-${Date.now()}`,
+                    quantity: productData.stock,
+                    previousStock: 0,
+                    newStock: productData.stock,
+                    createdAt: new Date().toISOString(),
+                    source: 'initial' as const,
+                    userName: user?.name,
+                }] } : {}),
             };
+            const normalizedSku = newProduct.sku?.trim().toLowerCase();
+            const existing = normalizedSku && newProduct.kind !== 'service' ? products.find(p =>
+                p.kind !== 'service' &&
+                p.name.trim().toLowerCase() === newProduct.name.trim().toLowerCase() &&
+                p.sku?.trim().toLowerCase() === normalizedSku
+            ) : undefined;
+            if (existing) {
+                setPendingMerge({ existing, incoming: newProduct });
+                return;
+            }
             setProducts([newProduct, ...products]);
             toast({ title: "Product Added", description: `${data.name} has been added to inventory.` });
             addActivityLog('Product Added', `Added new product: ${data.name}`);
@@ -287,13 +375,81 @@ export default function InventoryPage() {
         setIsFormOpen(false);
         setProductToEdit(null);
     };
+
+    const confirmDuplicateMerge = () => {
+        if (!pendingMerge) return;
+        const { existing, incoming } = pendingMerge;
+        const added = incoming.stock;
+        const newStock = existing.stock + added;
+        setProducts(products.map(p => p.id === existing.id ? {
+            ...p,
+            stock: newStock,
+            stockHistory: [...(p.stockHistory ?? []), {
+                id: `stock-${Date.now()}`,
+                quantity: added,
+                previousStock: existing.stock,
+                newStock,
+                createdAt: new Date().toISOString(),
+                source: 'duplicate-merge' as const,
+                userName: user?.name,
+                note: `Merged duplicate ${incoming.name} (${incoming.sku})`,
+            }],
+        } : p));
+        addActivityLog('Stock Merged', `Merged ${added} stock into ${existing.name} (${existing.sku}); new stock ${newStock}.`);
+        toast({ title: 'Stock Merged', description: `${added} units were added to ${existing.name}. No duplicate was created.` });
+        setPendingMerge(null);
+        setIsFormOpen(false);
+        setProductToEdit(null);
+    };
     
+    const linkedServicesForDelete = productToDelete?.kind !== 'service'
+        ? products.filter(p => p.kind === 'service' && p.serviceLinks?.some(link => link.productId === productToDelete?.id))
+        : [];
+
     const handleDelete = () => {
         if (!productToDelete) return;
         addActivityLog('Product Deleted', `Deleted product: ${productToDelete.name} (ID: ${productToDelete.id})`);
-        setProducts(products.filter(p => p.id !== productToDelete.id));
-        toast({ title: "Product Deleted", description: `${productToDelete.name} has been deleted.` });
+        setProducts(products
+            .filter(p => p.id !== productToDelete.id)
+            .map(p => p.kind === 'service' && p.serviceLinks?.some(link => link.productId === productToDelete.id)
+                ? { ...p, serviceLinks: p.serviceLinks.filter(link => link.productId !== productToDelete.id) }
+                : p));
+        toast({
+            title: "Product Deleted",
+            description: linkedServicesForDelete.length > 0
+                ? `${productToDelete.name} was deleted and unlinked from ${linkedServicesForDelete.length} service${linkedServicesForDelete.length === 1 ? '' : 's'}.`
+                : `${productToDelete.name} has been deleted.`,
+        });
         setProductToDelete(null);
+        setReplacementProductId('');
+    };
+
+    const handleMoveLinksAndDelete = () => {
+        if (!productToDelete || !replacementProductId) return;
+        const replacement = products.find(p => p.id === replacementProductId);
+        if (!replacement) return;
+
+        setProducts(products
+            .filter(p => p.id !== productToDelete.id)
+            .map(p => {
+                if (p.kind !== 'service' || !p.serviceLinks?.some(link => link.productId === productToDelete.id)) return p;
+                const movedQty = p.serviceLinks
+                    .filter(link => link.productId === productToDelete.id)
+                    .reduce((sum, link) => sum + link.quantity, 0);
+                const withoutOld = p.serviceLinks.filter(link => link.productId !== productToDelete.id);
+                const existingReplacement = withoutOld.find(link => link.productId === replacementProductId);
+                const serviceLinks = existingReplacement
+                    ? withoutOld.map(link => link.productId === replacementProductId ? { ...link, quantity: link.quantity + movedQty } : link)
+                    : [...withoutOld, { productId: replacementProductId, quantity: movedQty }];
+                return { ...p, serviceLinks };
+            }));
+        addActivityLog('Product Deleted', `Moved service links from ${productToDelete.name} to ${replacement.name}, then deleted ${productToDelete.id}.`);
+        toast({
+            title: 'Links Moved & Product Deleted',
+            description: `${linkedServicesForDelete.length} service link${linkedServicesForDelete.length === 1 ? '' : 's'} moved to ${replacement.name}.`,
+        });
+        setProductToDelete(null);
+        setReplacementProductId('');
     };
 
     const getProductStatus = (product: Product) => {
@@ -349,6 +505,12 @@ export default function InventoryPage() {
                                     ]}
                                 />
                                 <ColumnVisibilityMenu visibility={columnVisibility} />
+                                {canManage && (
+                                    <Button variant="outline" size="sm" className="gap-1 w-full sm:w-auto" onClick={() => setIsCategoryDialogOpen(true)}>
+                                        <List className="h-4 w-4" />
+                                        Categories
+                                    </Button>
+                                )}
                                 <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
                                     <Link href="/pos">
                                         <CreditCard className="h-4 w-4" />
@@ -376,11 +538,11 @@ export default function InventoryPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Product Name</TableHead>
-                                    {isVisible('type') && <TableHead className="hidden md:table-cell">Type</TableHead>}
-                                    {isVisible('stock') && <TableHead>Stock</TableHead>}
-                                    {isVisible('status') && <TableHead>Status</TableHead>}
-                                    {isVisible('price') && <TableHead className="hidden md:table-cell">Price</TableHead>}
+                                    {orderedColumns.filter(column => isVisible(column.id)).map(column => (
+                                        <TableHead key={column.id} className={column.id === 'type' || column.id === 'price' ? 'hidden md:table-cell' : undefined}>
+                                            {column.label}
+                                        </TableHead>
+                                    ))}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -392,44 +554,38 @@ export default function InventoryPage() {
                                     const statuses = getProductStatus(product);
                                     return (
                                         <TableRow key={product.id}>
-                                            <TableCell className="font-medium">
-                                                <div 
-                                                    className="cursor-pointer hover:underline"
-                                                    onClick={() => setProductToView(product)}
-                                                >
-                                                    {product.name}
-                                                </div>
-                                                <div className="text-sm text-muted-foreground md:hidden">
-                                                    {currencySymbol} {formatNumber(product.price)}
-                                                </div>
-                                            </TableCell>
-                                            {isVisible('type') && (
-                                                <TableCell className="hidden md:table-cell">
-                                                    {product.kind === 'service' ? (
-                                                        <Badge variant="outline" className="capitalize">Service</Badge>
-                                                    ) : (
-                                                        <Badge variant={productTypeVariant[product.productType || 'standard']} className="capitalize">
-                                                            {product.productType || 'Standard'}
-                                                        </Badge>
-                                                    )}
-                                                </TableCell>
-                                            )}
-                                            {isVisible('stock') && <TableCell>{product.kind === 'service' ? <span className="text-muted-foreground">—</span> : product.stock}</TableCell>}
-                                            {isVisible('status') && (
-                                                <TableCell>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {statuses.length > 0 ? (
-                                                            statuses.map(status => (
-                                                                <Badge key={status.text} variant={status.variant} className="whitespace-nowrap">{status.text}</Badge>
-                                                            ))
-                                                        ) : (
-                                                            <span className="text-muted-foreground">-</span>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                            )}
-                                            {isVisible('price') && <TableCell className="hidden md:table-cell">{currencySymbol} {formatNumber(product.price)}</TableCell>}
+                                            {orderedColumns.filter(column => isVisible(column.id)).map(column => {
+                                                if (column.id === 'name') return (
+                                                    <TableCell key={column.id} className="font-medium">
+                                                        <div className="cursor-pointer hover:underline" onClick={() => setProductToView(product)}>{product.name}</div>
+                                                        <div className="text-sm text-muted-foreground md:hidden">{currencySymbol} {formatNumber(product.price)}</div>
+                                                    </TableCell>
+                                                );
+                                                if (column.id === 'sku') return <TableCell key={column.id}>{product.sku || '—'}</TableCell>;
+                                                if (column.id === 'type') return (
+                                                    <TableCell key={column.id} className="hidden md:table-cell">
+                                                        {product.kind === 'service' ? <Badge variant="outline">Service</Badge> : <Badge variant={productTypeVariant[product.productType || 'standard']} className="capitalize">{product.productType || 'Standard'}</Badge>}
+                                                    </TableCell>
+                                                );
+                                                if (column.id === 'stock') return <TableCell key={column.id}>{product.kind === 'service' ? <span className="text-muted-foreground">—</span> : product.stock}</TableCell>;
+                                                if (column.id === 'status') return (
+                                                    <TableCell key={column.id}><div className="flex flex-wrap gap-1">{statuses.length > 0 ? statuses.map(status => <Badge key={status.text} variant={status.variant} className="whitespace-nowrap">{status.text}</Badge>) : <span className="text-muted-foreground">-</span>}</div></TableCell>
+                                                );
+                                                if (column.id === 'price') return <TableCell key={column.id} className="hidden md:table-cell">{currencySymbol} {formatNumber(product.price)}</TableCell>;
+                                                return null;
+                                            })}
                                             <TableCell>
+                                                <div className="flex items-center justify-end gap-1">
+                                                {canManage && product.kind !== 'service' && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 gap-1 whitespace-nowrap"
+                                                        onClick={() => { setProductToRestock(product); setRestockQty(''); }}
+                                                    >
+                                                        <PlusCircle className="h-3.5 w-3.5" /> Add Stock
+                                                    </Button>
+                                                )}
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                         <Button aria-haspopup="true" size="icon" variant="ghost" disabled={!canManage}>
@@ -450,6 +606,7 @@ export default function InventoryPage() {
                                                         )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     )
@@ -591,7 +748,22 @@ export default function InventoryPage() {
                                     <FormItem><FormLabel>SKU (Stock Keeping Unit)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name="category" render={({ field }) => (
-                                    <FormItem><FormLabel>Category</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem className="flex flex-col"><FormLabel>Category</FormLabel>
+                                        <FormControl>
+                                            <Combobox
+                                                options={categoryOptions}
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                                onCreateOption={addCategory}
+                                                createOptionLabel={(label) => `Add category "${label}"`}
+                                                placeholder="Select a category"
+                                                searchPlaceholder="Search or add category..."
+                                                emptyText="No category found."
+                                                className="w-full"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
                                 )} />
                                 <FormField control={form.control} name="unitOfMeasure" render={({ field }) => (
                                     <FormItem><FormLabel>Unit of Measure</FormLabel>
@@ -745,6 +917,62 @@ export default function InventoryPage() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Product Categories</DialogTitle>
+                        <DialogDescription>View categories used when adding or editing inventory items.</DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[50vh] overflow-y-auto rounded-md border">
+                        {categoryOptions.length === 0 ? (
+                            <div className="p-4 text-sm text-muted-foreground">No categories yet. Add one from the product form.</div>
+                        ) : categoryOptions.map(option => {
+                            const savedCategory = productCategories.find(category => category.name.trim().toLowerCase() === option.value.toLowerCase());
+                            const linkedCount = products.filter(product => product.category?.trim().toLowerCase() === option.value.toLowerCase()).length;
+                            return (
+                                <div key={option.value} className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-b-0">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium">{option.label}</p>
+                                        <p className="text-xs text-muted-foreground">{linkedCount} item{linkedCount === 1 ? '' : 's'}</p>
+                                    </div>
+                                    {canDelete ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                            onClick={() => setCategoryToDelete(savedCategory ?? { id: `legacy-${option.value}`, name: option.value })}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">Delete category</span>
+                                        </Button>
+                                    ) : (
+                                        <Badge variant="outline">In use</Badge>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <AlertDialog open={!!categoryToDelete} onOpenChange={(open) => { if (!open) setCategoryToDelete(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete category?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will remove {categoryToDelete?.name} from the category list and clear it from matching products. The products themselves will not be deleted.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteCategory} className="bg-destructive hover:bg-destructive/90">Delete Category</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             <Dialog open={!!productToView} onOpenChange={(open) => !open && setProductToView(null)}>
                 {productToView && (
                     <ProductDetail
@@ -755,15 +983,70 @@ export default function InventoryPage() {
                 )}
             </Dialog>
 
-            <AlertDialog open={!!productToDelete} onOpenChange={(open) => !open && setProductToDelete(null)}>
+            <AlertDialog open={!!productToDelete} onOpenChange={(open) => { if (!open) { setProductToDelete(null); setReplacementProductId(''); } }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                        <AlertDialogDescription>This action cannot be undone. This will permanently delete the product.</AlertDialogDescription>
+                        <AlertDialogTitle>{linkedServicesForDelete.length > 0 ? 'This product is linked to services' : 'Are you absolutely sure?'}</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-2">
+                                <p>This action cannot be undone. This will permanently delete {productToDelete?.name || 'the product'}.</p>
+                                {linkedServicesForDelete.length > 0 && (
+                                    <>
+                                        <p>Choose whether to keep the product or remove its links and delete it.</p>
+                                        <div className="rounded-md border bg-muted/40 p-3 text-foreground">
+                                            <p className="font-medium text-sm">Linked services:</p>
+                                            <ul className="mt-1 list-disc pl-5 text-sm">
+                                                {linkedServicesForDelete.map(service => <li key={service.id}>{service.name}</li>)}
+                                            </ul>
+                                        </div>
+                                        <div className="space-y-1.5 text-foreground">
+                                            <Label htmlFor="replacement-sku">Move links to another SKU</Label>
+                                            <Select value={replacementProductId} onValueChange={setReplacementProductId}>
+                                                <SelectTrigger id="replacement-sku">
+                                                    <SelectValue placeholder="Select replacement product" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {products
+                                                        .filter(p => p.kind !== 'service' && !p.deletedAt && p.id !== productToDelete?.id)
+                                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                                        .map(p => (
+                                                            <SelectItem key={p.id} value={p.id}>
+                                                                {p.name}{p.sku ? ` — ${p.sku}` : ''}
+                                                            </SelectItem>
+                                                        ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                        <AlertDialogCancel>{linkedServicesForDelete.length > 0 ? 'Keep Product' : 'Cancel'}</AlertDialogCancel>
+                        {linkedServicesForDelete.length > 0 && (
+                            <AlertDialogAction onClick={handleMoveLinksAndDelete} disabled={!replacementProductId}>
+                                Move Links & Delete
+                            </AlertDialogAction>
+                        )}
+                        <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+                            {linkedServicesForDelete.length > 0 ? 'Unlink & Delete' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={!!pendingMerge} onOpenChange={(open) => { if (!open) setPendingMerge(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Merge duplicate product?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            A product named {pendingMerge?.existing.name} with SKU {pendingMerge?.existing.sku} already exists. Merge {pendingMerge?.incoming.stock ?? 0} units into its current stock of {pendingMerge?.existing.stock ?? 0}? No duplicate POS item will be created.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Review Product</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDuplicateMerge}>Merge Stock</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

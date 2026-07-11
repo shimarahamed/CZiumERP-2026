@@ -9,33 +9,43 @@ import { db, enableNetwork, disableNetwork } from '@/lib/firebase';
 
 const getStoredIsOnline = () => {
     if (typeof window !== 'undefined') {
-        return localStorage.getItem('isOnline') === 'true';
+        return localStorage.getItem('isOnline') !== 'false';
     }
-    return false;
+    return true;
 };
 
 export default function DeveloperSettings() {
     const { toast } = useToast();
-    const [isOnline, setIsOnline] = useState(false);
+    const [syncEnabled, setSyncEnabled] = useState(true);
+    const [isUpdating, setIsUpdating] = useState(false);
 
     useEffect(() => {
-        setIsOnline(getStoredIsOnline());
+        setSyncEnabled(getStoredIsOnline());
     }, []);
 
-    const handleOnlineSyncToggle = (checked: boolean) => {
-        setIsOnline(checked);
-        if (checked) {
-            enableNetwork(db).then(() => {
+    const handleOnlineSyncToggle = async (checked: boolean) => {
+        const previousValue = syncEnabled;
+        setSyncEnabled(checked);
+        setIsUpdating(true);
+
+        try {
+            if (checked) {
+                await enableNetwork(db);
                 toast({ title: 'Online Sync Enabled', description: 'Data will now sync with the cloud.' });
-                localStorage.setItem('isOnline', 'true');
-                window.dispatchEvent(new Event('czium:online-status'));
+            } else {
+                await disableNetwork(db);
+                toast({ title: 'Cloud Sync Paused', description: 'Firestore will use its local cache until sync is enabled again.' });
+            }
+            localStorage.setItem('isOnline', String(checked));
+        } catch {
+            setSyncEnabled(previousValue);
+            toast({
+                variant: 'destructive',
+                title: 'Sync Setting Failed',
+                description: 'The Firestore network setting could not be changed. Please try again.',
             });
-        } else {
-            disableNetwork(db).then(() => {
-                toast({ title: 'Online Sync Disabled', description: 'Application is now in offline mode.' });
-                localStorage.setItem('isOnline', 'false');
-                window.dispatchEvent(new Event('czium:online-status'));
-            });
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -48,14 +58,15 @@ export default function DeveloperSettings() {
             <CardContent className="space-y-4">
                 <div className="flex flex-row items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
-                        <Label className="text-base">Enable Online Sync</Label>
+                        <Label className="text-base">Enable Cloud Sync</Label>
                         <p className="text-sm text-muted-foreground">
-                            Connect to the live Firestore database. When disabled, the app works offline.
+                            When disabled, Firestore uses cached data and queues supported changes locally. Re-enable it to sync with the cloud.
                         </p>
                     </div>
                     <Switch
-                        checked={isOnline}
+                        checked={syncEnabled}
                         onCheckedChange={handleOnlineSyncToggle}
+                        disabled={isUpdating}
                     />
                 </div>
             </CardContent>

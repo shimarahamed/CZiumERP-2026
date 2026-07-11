@@ -1,22 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { WifiOff } from 'lucide-react';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 
 /** Fixed banner shown while the browser is offline; changes sync when back online. */
 export default function OfflineBanner() {
-  const [offline, setOffline] = useState(false);
-
-  useEffect(() => {
-    const update = () => setOffline(!navigator.onLine);
-    update();
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    return () => {
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-    };
-  }, []);
+  const offline = useOnlineStatus() === false;
 
   if (!offline) return null;
   return (

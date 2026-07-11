@@ -12,7 +12,8 @@ import { Store as StoreIcon } from '@/components/icons';
 import Image from 'next/image';
 import { sendTenantEmail, emailShell, escapeHtml, isSmtpConfigured } from '@/lib/email';
 import { sendTenantSms, sendTenantWhatsapp, sendAndLogMessage } from '@/lib/messaging';
-import { nodeToPdfBase64, downloadNodeAsPdf } from '@/lib/invoice-pdf';
+import { nodeToPdfBase64 } from '@/lib/invoice-pdf';
+import { downloadReceiptDocumentPdf } from '@/lib/native-document-pdf';
 import { CustomFieldsDisplay } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
@@ -43,24 +44,25 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
     const emailEnabled = themeSettings.emailGatewayEnabled === true
         || isSmtpConfigured(smtpConfigList.find(s => s.id === 'default'));
 
-    const handleDownload = async () => {
-        if (!printableRef.current || downloading) return;
-        setDownloading(true);
-        try {
-            await downloadNodeAsPdf(printableRef.current, `Receipt-${invoice.id}.pdf`);
-        } catch (err) {
-            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
-        } finally {
-            setDownloading(false);
-        }
-    };
-
     const handlePrint = () => {
         document.body.classList.add('printing-invoice');
         if (embedded) document.body.classList.add('print-only-receipt');
         window.print();
         document.body.classList.remove('printing-invoice');
         document.body.classList.remove('print-only-receipt');
+    };
+
+    const handleDownload = async () => {
+        if (!printableRef.current || downloading) return;
+        setDownloading(true);
+        try {
+            await downloadReceiptDocumentPdf(invoice, { companyName, companyAddress, currencySymbol, themeSettings });
+            toast({ title: 'Receipt downloaded', description: `Receipt ${invoice.id} was saved as a PDF.` });
+        } catch (err) {
+            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
+        } finally {
+            setDownloading(false);
+        }
     };
 
     const Wrapper = embedded ? 'div' : DialogContent;
@@ -123,7 +125,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
       setSending(true);
       try {
         const attachments = printableRef.current
-          ? [await nodeToPdfBase64(printableRef.current, `Receipt-${invoice.id}.pdf`)]
+          ? [await nodeToPdfBase64(printableRef.current, `Receipt-${invoice.id}.pdf`, { kind: 'receipt' })]
           : undefined;
         await sendTenantEmail({ to: customer.email, subject, html, text, attachments });
         setEmailLogs(prev => [{
@@ -164,7 +166,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
       }
       setSendingWhatsapp(true);
       try {
-        const pdf = printableRef.current ? await nodeToPdfBase64(printableRef.current, `Receipt-${invoice.id}.pdf`) : undefined;
+        const pdf = printableRef.current ? await nodeToPdfBase64(printableRef.current, `Receipt-${invoice.id}.pdf`, { kind: 'receipt' }) : undefined;
         const text = `Your receipt ${invoice.id} from ${companyName} — total ${currencySymbol} ${formatNumber(invoice.amount)}.`;
         await sendAndLogMessage(
           { setMessageLogs }, 'whatsapp', 'Sales & Customers', 'invoice-manual-send', to, text, user?.name ?? 'system',
@@ -345,7 +347,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                 )}
                 <Button onClick={handleDownload} variant="outline" className="flex-1 min-w-0 px-2" disabled={downloading}>
                     {downloading ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Download className="mr-1.5 h-4 w-4 shrink-0" />}
-                    <span className="truncate">{downloading ? 'Saving…' : 'Download'}</span>
+                    <span className="truncate">{downloading ? 'Saving…' : 'Save PDF'}</span>
                 </Button>
                 <Button onClick={handlePrint} variant="outline" className="flex-1 min-w-0 px-2">
                     <Printer className="mr-1.5 h-4 w-4 shrink-0" />

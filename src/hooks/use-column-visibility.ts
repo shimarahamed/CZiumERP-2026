@@ -23,6 +23,15 @@ export function useColumnVisibility(tableId: string, columns: ColumnDef[]) {
     [user, tableId]
   );
 
+  const orderedColumns = useMemo(() => {
+    const saved = user?.columnOrderPreferences?.[tableId] ?? [];
+    const byId = new Map(columns.map(column => [column.id, column]));
+    return [
+      ...saved.map(id => byId.get(id)).filter((column): column is ColumnDef => Boolean(column)),
+      ...columns.filter(column => !saved.includes(column.id)),
+    ];
+  }, [columns, tableId, user]);
+
   const isVisible = useCallback((columnId: string) => !hiddenIds.has(columnId), [hiddenIds]);
 
   const toggleColumn = useCallback((columnId: string, visible: boolean) => {
@@ -43,9 +52,25 @@ export function useColumnVisibility(tableId: string, columns: ColumnDef[]) {
     setUsers(prev => prev.map(u => {
       if (u.id !== user.id) return u;
       const { [tableId]: _removed, ...rest } = u.columnPreferences ?? {};
-      return { ...u, columnPreferences: rest };
+      const { [tableId]: _removedOrder, ...orderRest } = u.columnOrderPreferences ?? {};
+      return { ...u, columnPreferences: rest, columnOrderPreferences: orderRest };
     }));
   }, [user, setUsers, tableId]);
 
-  return { columns, isVisible, toggleColumn, resetColumns, hiddenCount: hiddenIds.size };
+  const moveColumn = useCallback((columnId: string, direction: -1 | 1) => {
+    if (!user) return;
+    setUsers(prev => prev.map(u => {
+      if (u.id !== user.id) return u;
+      const saved = u.columnOrderPreferences?.[tableId] ?? [];
+      const knownIds = columns.map(column => column.id);
+      const order = [...saved.filter(id => knownIds.includes(id)), ...knownIds.filter(id => !saved.includes(id))];
+      const index = order.indexOf(columnId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= order.length) return u;
+      [order[index], order[target]] = [order[target], order[index]];
+      return { ...u, columnOrderPreferences: { ...u.columnOrderPreferences, [tableId]: order } };
+    }));
+  }, [columns, setUsers, tableId, user]);
+
+  return { columns: orderedColumns, isVisible, toggleColumn, moveColumn, resetColumns, hiddenCount: hiddenIds.size };
 }
