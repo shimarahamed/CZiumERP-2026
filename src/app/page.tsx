@@ -189,8 +189,7 @@ export default function DashboardPage() {
       .slice(0, 6),
     [storeInvoices]);
 
-  const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9'];
-  const topProductsPie = useMemo(() => topProducts.map((p, i) => ({ ...p, fill: PIE_COLORS[i % PIE_COLORS.length] })), [topProducts]);
+  const topProductsPie = useMemo(() => topProducts.map((p, i) => ({ ...p, fill: `hsl(var(--chart-${(i % 6) + 1}))` })), [topProducts]);
 
   const canCreatePo = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'inventory-staff';
   const kpiSubtitle = currentStore?.id === 'all' ? "Across all stores" : "For this store's paid invoices";

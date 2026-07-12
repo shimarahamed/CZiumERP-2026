@@ -201,7 +201,7 @@ export function TenantBackupPanel({ tenantId }: { tenantId: string }) {
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading backups…
           </div>
         ) : backups.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">No backups yet. Trigger one with "Backup Now", or wait for tonight's scheduled run.</p>
+          <p className="text-sm text-muted-foreground py-8 text-center">No backups yet. Trigger one with &quot;Backup Now&quot;, or wait for tonight&apos;s scheduled run.</p>
         ) : (
           <Table>
             <TableHeader>
