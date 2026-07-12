@@ -36,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from '@/hooks/use-debounce';
 import { buildInvoiceLedgerEntries, postInvoiceServerSideFast } from '@/lib/posting';
+import { DEFAULT_LOYALTY_TIERS, resolveLoyaltyTier } from '@/lib/loyalty';
 import Header from "@/components/Header";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -393,7 +394,7 @@ export default function InvoicesPage() {
     useEffect(() => {
         if (isInitialRender.current) { isInitialRender.current = false; return; }
         const customer = customers.find(c => c.id === watchedCustomerId);
-        const loyaltyTiers = themeSettings.loyaltySettings?.tiers || { Silver: { points: 500, discount: 5 }, Gold: { points: 2000, discount: 10 } };
+        const loyaltyTiers = themeSettings.loyaltySettings?.tiers || DEFAULT_LOYALTY_TIERS;
         const tierDiscounts = { Bronze: 0, Silver: loyaltyTiers.Silver.discount, Gold: loyaltyTiers.Gold.discount };
         if (customer?.tier) {
             const rate = tierDiscounts[customer.tier];
@@ -604,15 +605,14 @@ export default function InvoicesPage() {
                     setInvoices(prev => [postedInvoice, ...prev.filter(inv => inv.id !== postedInvoice.id)]);
 
                     if (!isWalkIn && customer) {
-                        const loyaltyTiers = themeSettings.loyaltySettings?.tiers || { Silver: { points: 500, discount: 5 }, Gold: { points: 2000, discount: 10 } };
+                        const loyaltyTiers = themeSettings.loyaltySettings?.tiers || DEFAULT_LOYALTY_TIERS;
                         const customerIndex = customers.findIndex(c => c.id === customer.id);
                         if (customerIndex > -1) {
                             const updatedCustomers = [...customers];
                             const customerToUpdate = { ...updatedCustomers[customerIndex] };
                             const pointsEarned = Math.floor(postedInvoice.amount);
                             customerToUpdate.loyaltyPoints = (customerToUpdate.loyaltyPoints || 0) + pointsEarned;
-                            if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Gold.points && customerToUpdate.tier !== 'Gold') customerToUpdate.tier = 'Gold';
-                            else if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Silver.points && customerToUpdate.tier === 'Bronze') customerToUpdate.tier = 'Silver';
+                            customerToUpdate.tier = resolveLoyaltyTier(customerToUpdate.loyaltyPoints, loyaltyTiers);
                             updatedCustomers[customerIndex] = customerToUpdate;
                             setCustomers(updatedCustomers);
                             toast({ title: "Loyalty Points Awarded!", description: `${customerToUpdate.name} earned ${pointsEarned} points.` });
@@ -684,7 +684,7 @@ export default function InvoicesPage() {
         // Loyalty points (walk-in invoices have no saved customer to credit)
         if (data.status === 'paid' && !isWalkIn) {
             const wasAlreadyPaid = invoiceToEdit?.status === 'paid';
-            const loyaltyTiers = themeSettings.loyaltySettings?.tiers || { Silver: { points: 500, discount: 5 }, Gold: { points: 2000, discount: 10 } };
+            const loyaltyTiers = themeSettings.loyaltySettings?.tiers || DEFAULT_LOYALTY_TIERS;
             if (!wasAlreadyPaid) {
                 const customerIndex = customers.findIndex(c => c.id === data.customerId);
                 if (customerIndex > -1) {
@@ -692,8 +692,7 @@ export default function InvoicesPage() {
                     const customerToUpdate = { ...updatedCustomers[customerIndex] };
                     const pointsEarned = Math.floor(totalAmount);
                     customerToUpdate.loyaltyPoints = (customerToUpdate.loyaltyPoints || 0) + pointsEarned;
-                    if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Gold.points && customerToUpdate.tier !== 'Gold') customerToUpdate.tier = 'Gold';
-                    else if (customerToUpdate.loyaltyPoints >= loyaltyTiers.Silver.points && customerToUpdate.tier === 'Bronze') customerToUpdate.tier = 'Silver';
+                    customerToUpdate.tier = resolveLoyaltyTier(customerToUpdate.loyaltyPoints, loyaltyTiers);
                     updatedCustomers[customerIndex] = customerToUpdate;
                     setCustomers(updatedCustomers);
                     toast({ title: "Loyalty Points Awarded!", description: `${customerToUpdate.name} earned ${pointsEarned} points.` });

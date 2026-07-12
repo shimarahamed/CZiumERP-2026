@@ -27,6 +27,10 @@ import { cn } from '@/lib/utils';
 import { PageSkeleton } from '@/components/PageSkeleton';
 import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
 import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { startOfWeek } from 'date-fns/startOfWeek';
+import { ArrowUpRight, ArrowDownRight } from '@/components/icons';
 
 const INVENTORY_DETAILS_COLUMNS: ColumnDef[] = [
     { id: 'name', label: 'Product', locked: true },
@@ -91,6 +95,7 @@ export default function ReportsPage() {
         from: subDays(new Date(), 89),
         to: new Date(),
     });
+    const [trendsGrouping, setTrendsGrouping] = useState<'day' | 'week'>('day');
 
     const reportRef = useRef<HTMLDivElement>(null);
 
@@ -204,6 +209,84 @@ export default function ReportsPage() {
             profitMargin,
         };
     }, [salesReportData, filteredInvoices]);
+
+    // Trends Report Data — buckets invoices per day or per week so the user can
+    // see which period made the most profit and which products were consumed
+    // most, rather than only a single all-time total like the Financial tab.
+    const trendsReportData = useMemo(() => {
+        const bucketKey = (dateStr: string) => {
+            if (trendsGrouping === 'day') return dateStr;
+            return format(startOfWeek(parseISO(dateStr), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+        };
+
+        type Bucket = {
+            key: string;
+            revenue: number;
+            cogs: number;
+            invoiceCount: number;
+            itemsSold: number;
+            products: Map<string, { name: string; quantity: number; revenue: number }>;
+        };
+        const buckets = new Map<string, Bucket>();
+
+        filteredInvoices.forEach(inv => {
+            const key = bucketKey(inv.date);
+            if (!buckets.has(key)) {
+                buckets.set(key, { key, revenue: 0, cogs: 0, invoiceCount: 0, itemsSold: 0, products: new Map() });
+            }
+            const bucket = buckets.get(key)!;
+            bucket.revenue += inv.amount;
+            bucket.invoiceCount += 1;
+            inv.items.forEach(item => {
+                bucket.cogs += item.cost * item.quantity;
+                bucket.itemsSold += item.quantity;
+                const p = bucket.products.get(item.productId) ?? { name: item.productName, quantity: 0, revenue: 0 };
+                p.quantity += item.quantity;
+                p.revenue += lineTotal(item.price, item.quantity, item.discount, item.discountType);
+                bucket.products.set(item.productId, p);
+            });
+        });
+
+        const periods = [...buckets.values()]
+            .map(b => ({
+                key: b.key,
+                revenue: b.revenue,
+                cogs: b.cogs,
+                profit: b.revenue - b.cogs,
+                margin: b.revenue > 0 ? ((b.revenue - b.cogs) / b.revenue) * 100 : 0,
+                invoiceCount: b.invoiceCount,
+                itemsSold: b.itemsSold,
+                topProducts: [...b.products.entries()]
+                    .map(([id, v]) => ({ id, ...v }))
+                    .sort((p1, p2) => p2.quantity - p1.quantity)
+                    .slice(0, 5),
+            }))
+            .sort((a, b) => a.key.localeCompare(b.key));
+
+        const bestPeriod = periods.length ? periods.reduce((a, b) => (b.profit > a.profit ? b : a)) : null;
+        const worstPeriod = periods.length ? periods.reduce((a, b) => (b.profit < a.profit ? b : a)) : null;
+
+        // Overall most-consumed products across the whole range (for "which
+        // inventory item is consumed more" independent of any single period).
+        const consumptionMap = new Map<string, { name: string; quantity: number }>();
+        filteredInvoices.forEach(inv => inv.items.forEach(item => {
+            const c = consumptionMap.get(item.productId) ?? { name: item.productName, quantity: 0 };
+            c.quantity += item.quantity;
+            consumptionMap.set(item.productId, c);
+        }));
+        const mostConsumed = [...consumptionMap.entries()]
+            .map(([id, v]) => ({ id, ...v }))
+            .sort((a, b) => b.quantity - a.quantity)
+            .slice(0, 10)
+            .map(item => ({ ...item, currentStock: products.find(p => p.id === item.id)?.stock ?? 0 }));
+
+        return { periods, bestPeriod, worstPeriod, mostConsumed };
+    }, [filteredInvoices, trendsGrouping, products]);
+
+    const trendsChartConfig = {
+        profit: { label: 'Profit', color: 'hsl(var(--primary))' },
+        cogs: { label: 'COGS', color: 'hsl(var(--destructive))' },
+    };
 
     // Loading guard sits AFTER all hooks so hook order never changes between
     // renders (React rules-of-hooks) — previously this crashed on hydration.
@@ -343,10 +426,121 @@ export default function ReportsPage() {
         </div>
     );
 
+    const TrendsReportContent = () => trendsReportData.periods.length === 0 ? (
+        <EmptyState
+            icon={TrendingUp}
+            title="No sales data for this period"
+            description="Try adjusting the date range to see day-by-day and week-by-week trends."
+        />
+    ) : (
+        <div className="space-y-6">
+            <div className="flex items-center justify-end gap-2 non-printable">
+                <span className="text-sm text-muted-foreground mr-1">Group by:</span>
+                <Button size="sm" variant={trendsGrouping === 'day' ? 'default' : 'outline'} onClick={() => setTrendsGrouping('day')}>Day</Button>
+                <Button size="sm" variant={trendsGrouping === 'week' ? 'default' : 'outline'} onClick={() => setTrendsGrouping('week')}>Week</Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {trendsReportData.bestPeriod && (
+                    <Card className="border-emerald-500/30 bg-emerald-500/5">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Most Profitable {trendsGrouping === 'day' ? 'Day' : 'Week'}</CardTitle>
+                            <ArrowUpRight className="h-4 w-4 text-emerald-600" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-emerald-600">{currencySymbol} {formatNumber(trendsReportData.bestPeriod.profit)}</div>
+                            <p className="text-xs text-muted-foreground mt-1">{trendsGrouping === 'day' ? format(parseISO(trendsReportData.bestPeriod.key), 'PPP') : `Week of ${format(parseISO(trendsReportData.bestPeriod.key), 'PPP')}`}</p>
+                        </CardContent>
+                    </Card>
+                )}
+                {trendsReportData.worstPeriod && (
+                    <Card className="border-destructive/30 bg-destructive/5">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Least Profitable {trendsGrouping === 'day' ? 'Day' : 'Week'}</CardTitle>
+                            <ArrowDownRight className="h-4 w-4 text-destructive" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-destructive">{currencySymbol} {formatNumber(trendsReportData.worstPeriod.profit)}</div>
+                            <p className="text-xs text-muted-foreground mt-1">{trendsGrouping === 'day' ? format(parseISO(trendsReportData.worstPeriod.key), 'PPP') : `Week of ${format(parseISO(trendsReportData.worstPeriod.key), 'PPP')}`}</p>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            <Card>
+                <CardHeader><CardTitle>Profit by {trendsGrouping === 'day' ? 'Day' : 'Week'}</CardTitle><CardDescription>Revenue minus cost of goods sold for each period.</CardDescription></CardHeader>
+                <CardContent>
+                    <ChartContainer config={trendsChartConfig} className="h-[280px] w-full">
+                        <BarChart data={trendsReportData.periods}>
+                            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                            <XAxis dataKey="key" tickFormatter={(v: string) => format(parseISO(v), trendsGrouping === 'day' ? 'MMM d' : 'MMM d')} tickLine={false} axisLine={false} fontSize={12} />
+                            <YAxis tickLine={false} axisLine={false} fontSize={12} tickFormatter={(v: number) => formatNumber(v)} />
+                            <ChartTooltip content={<ChartTooltipContent labelFormatter={(v: string) => format(parseISO(v), 'PPP')} />} />
+                            <Bar dataKey="profit" fill="var(--color-profit)" radius={4} />
+                        </BarChart>
+                    </ChartContainer>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle>{trendsGrouping === 'day' ? 'Daily' : 'Weekly'} Breakdown</CardTitle></CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader><TableRow>
+                            <TableHead>{trendsGrouping === 'day' ? 'Date' : 'Week of'}</TableHead>
+                            <TableHead className="text-right">Revenue</TableHead>
+                            <TableHead className="text-right">COGS</TableHead>
+                            <TableHead className="text-right">Profit</TableHead>
+                            <TableHead className="text-right">Margin</TableHead>
+                            <TableHead className="text-right">Invoices</TableHead>
+                            <TableHead>Top Consumed</TableHead>
+                        </TableRow></TableHeader>
+                        <TableBody>
+                            {[...trendsReportData.periods].reverse().map(p => (
+                                <TableRow key={p.key}>
+                                    <TableCell className="font-medium">{format(parseISO(p.key), 'PPP')}</TableCell>
+                                    <TableCell className="text-right">{currencySymbol} {formatNumber(p.revenue)}</TableCell>
+                                    <TableCell className="text-right">{currencySymbol} {formatNumber(p.cogs)}</TableCell>
+                                    <TableCell className={cn("text-right font-semibold", p.profit >= 0 ? "text-emerald-600" : "text-destructive")}>{currencySymbol} {formatNumber(p.profit)}</TableCell>
+                                    <TableCell className="text-right">{formatNumber(p.margin)}%</TableCell>
+                                    <TableCell className="text-right">{p.invoiceCount}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{p.topProducts.map(tp => tp.name).join(', ') || '—'}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle>Most Consumed Inventory</CardTitle><CardDescription>Items sold the most across the selected period, with current stock on hand.</CardDescription></CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader><TableRow>
+                            <TableHead>Product</TableHead>
+                            <TableHead className="text-right">Units Consumed</TableHead>
+                            <TableHead className="text-right">Current Stock</TableHead>
+                        </TableRow></TableHeader>
+                        <TableBody>
+                            {trendsReportData.mostConsumed.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell>{item.name}</TableCell>
+                                    <TableCell className="text-right">{item.quantity}</TableCell>
+                                    <TableCell className="text-right">{item.currentStock}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+
     const reportContentMap = {
         sales: <SalesReportContent />,
         inventory: <InventoryReportContent />,
         financial: <FinancialReportContent />,
+        trends: <TrendsReportContent />,
     };
 
     return (
@@ -374,10 +568,11 @@ export default function ReportsPage() {
                     </CardHeader>
                     <CardContent>
                          <Tabs value={activeTab} onValueChange={handleTabChange}>
-                            <TabsList className="grid w-full grid-cols-3 non-printable">
+                            <TabsList className="grid w-full grid-cols-4 non-printable">
                                 <TabsTrigger value="sales">Sales</TabsTrigger>
                                 <TabsTrigger value="inventory">Inventory</TabsTrigger>
                                 <TabsTrigger value="financial">Financial</TabsTrigger>
+                                <TabsTrigger value="trends">Trends</TabsTrigger>
                             </TabsList>
                             <TabsContent value="sales" className="mt-4">
                                <SalesReportContent />
@@ -387,6 +582,9 @@ export default function ReportsPage() {
                              </TabsContent>
                               <TabsContent value="financial" className="mt-4">
                                 <FinancialReportContent />
+                              </TabsContent>
+                              <TabsContent value="trends" className="mt-4">
+                                <TrendsReportContent />
                               </TabsContent>
                          </Tabs>
                     </CardContent>

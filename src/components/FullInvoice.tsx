@@ -137,9 +137,21 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
     const showLogo = themeSettings.showLogoOnDocuments !== false;
     const footerText = themeSettings.documentFooter || 'Thank you for your business!';
     const accent = themeSettings.documentAccent || '#1f2937';
+    // Item table header + grand total fill: the tenant's brand primary color
+    // (stored as a raw HSL triplet, e.g. "231 48% 48%"), not the document accent.
+    const brandColor = `hsl(${themeSettings.primaryColor || '231 48% 48%'})`;
     const companyPhone = themeSettings.companyPhone?.trim();
     const companyWebsite = themeSettings.companyWebsite?.trim();
+    const companyEmail = themeSettings.companyEmail?.trim();
     const regNumber = themeSettings.companyRegNumber?.trim();
+    // Letterhead template: custom header artwork/wordings replace the company
+    // name; the big low-opacity watermark uses the company logo (falling back
+    // to the letterhead artwork) unless explicitly switched off.
+    const letterheadImage = themeSettings.letterheadImageUrl;
+    const letterheadWording = themeSettings.letterheadText?.trim();
+    const watermarkSrc = themeSettings.letterheadWatermark !== false
+        ? (themeSettings.logoUrl || letterheadImage)
+        : undefined;
 
     const generateTextReceipt = () => {
       let receipt = `INVOICE from ${companyName}\n`;
@@ -386,14 +398,15 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                       in the money column headers, not repeated on every row. */}
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="border-b border-gray-400 bg-black/5">
-                        <th className="border-r border-gray-400 p-2 w-10 text-left font-semibold">#</th>
-                        <th className="border-r border-gray-400 p-2 text-left font-semibold">Item</th>
-                        <th className="border-r border-gray-400 p-2 w-14 text-center font-semibold">Qty</th>
-                        <th className="border-r border-gray-400 p-2 w-16 text-center font-semibold">Unit</th>
-                        <th className="border-r border-gray-400 p-2 w-28 text-right font-semibold whitespace-nowrap">Unit Price ({currencySymbol})</th>
-                        <th className="border-r border-gray-400 p-2 w-24 text-right font-semibold">Discount</th>
-                        <th className="p-2 w-28 text-right font-semibold whitespace-nowrap">Total ({currencySymbol})</th>
+                      {/* Header row filled solid with the brand primary color, white text */}
+                      <tr className="border-b border-gray-400" style={{ backgroundColor: brandColor }}>
+                        <th className="border-r border-gray-400/40 p-2 w-10 text-left font-semibold text-white">#</th>
+                        <th className="border-r border-gray-400/40 p-2 text-left font-semibold text-white">Item</th>
+                        <th className="border-r border-gray-400/40 p-2 w-14 text-center font-semibold text-white">Qty</th>
+                        <th className="border-r border-gray-400/40 p-2 w-16 text-center font-semibold text-white">Unit</th>
+                        <th className="border-r border-gray-400/40 p-2 w-28 text-right font-semibold whitespace-nowrap text-white">Unit Price ({currencySymbol})</th>
+                        <th className="border-r border-gray-400/40 p-2 w-24 text-right font-semibold text-white">Discount</th>
+                        <th className="p-2 w-28 text-right font-semibold whitespace-nowrap text-white">Total ({currencySymbol})</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -419,7 +432,8 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                       <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span><span className="font-medium">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Discount{invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}:</span><span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span><span className="font-medium">{currencySymbol} {formatNumber(taxAmount)}</span></div>
-                      <div className="border-t border-gray-400 pt-2 flex justify-between font-bold text-lg">
+                      {/* Grand total filled solid with the brand primary color, white text */}
+                      <div className="flex justify-between font-bold text-lg text-white rounded-md px-3 py-2 mt-1" style={{ backgroundColor: brandColor }}>
                         <span>Grand Total:</span>
                         <span>{currencySymbol} {formatNumber(invoice.amount)}</span>
                       </div>
@@ -432,8 +446,57 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                 </footer>
               </div>
             ) : (
-              /* ---- A4 invoice: classic / modern ---- */
-              <div ref={printableRef} className={cn('printable-area force-light-doc bg-white text-black p-4 sm:p-8 overflow-y-auto flex-1 min-h-0')}>
+              /* ---- A4 invoice: classic / modern / letterhead ---- */
+              <div ref={printableRef} className={cn('printable-area force-light-doc bg-white text-black overflow-y-auto flex-1 min-h-0', template === 'letterhead' ? 'relative p-4 sm:p-6' : 'p-4 sm:p-8')}>
+                {template === 'letterhead' && watermarkSrc && (
+                  /* Watermark: centred logo behind the page. Rendered as a
+                     low-opacity overlay (pointer-events off) so it shows through
+                     without needing a stacking-context rework of the body. */
+                  <Image src={watermarkSrc} alt="" aria-hidden width={600} height={600}
+                    className="pointer-events-none fixed inset-0 m-auto w-[45%] max-h-[50%] object-contain opacity-[0.05]" />
+                )}
+                {template === 'letterhead' && (
+                  <header className="mb-6">
+                    {/* One line: company logo with the big header artwork/wordings right
+                        beside it on the left, company details on the right of the page.
+                        Uploaded artwork carries the branding, so the company name text
+                        is dropped to avoid saying it twice. */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-3 border-b-2" style={{ borderColor: accent }}>
+                      {/* flex-1 + w-full: the artwork stretches across all the space
+                          left between the logo and the details column, with just the
+                          gap as breathing room. */}
+                      <div className="flex flex-1 items-center gap-3 min-w-0">
+                        {showLogo && (themeSettings.logoUrl
+                          ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={80} height={80} className="rounded-lg object-contain shrink-0" />
+                          : <StoreIcon className="h-8 w-8 text-primary shrink-0" />)}
+                        {letterheadImage ? (
+                          <Image src={letterheadImage} alt={companyName || 'Letterhead'} width={600} height={160} className="w-full max-h-20 object-contain object-left" />
+                        ) : letterheadWording ? (
+                          <h1 className="text-3xl font-bold tracking-wide" style={{ color: accent }}>{letterheadWording}</h1>
+                        ) : (
+                          <h1 className="text-2xl font-bold">{companyName}</h1>
+                        )}
+                      </div>
+                      <div className="sm:text-right text-xs leading-5 shrink-0">
+                        {companyAddress && <p className="whitespace-pre-wrap">{companyAddress}</p>}
+                        {companyPhone && <p>{companyPhone}</p>}
+                        {companyEmail && <p> {companyEmail}</p>}
+                        {companyWebsite && <p>{companyWebsite}</p>}
+                        {regNumber && <p>Reg No: {regNumber}</p>}
+                      </div>
+                    </div>
+                    {/* Compact document meta strip under the letterhead rule */}
+                    <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-3">
+                      <h2 className="text-xl font-bold tracking-wide">INVOICE <span className="font-normal text-muted-foreground"># {invoice.id}</span></h2>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                        <span><span className="font-semibold">Date:</span> {formatDateUK(invoice.date)}</span>
+                        <span><span className="font-semibold">Time:</span> {formatTimeUK(invoice.createdAt ?? invoice.date)}</span>
+                        <span className="capitalize"><span className="font-semibold">Status:</span> {invoice.status}</span>
+                        {invoice.paymentMethod && <span className="capitalize"><span className="font-semibold">Payment:</span> {invoice.paymentMethod}</span>}
+                      </div>
+                    </div>
+                  </header>
+                )}
                 {template === 'modern' && (
                   <div className="-m-4 sm:-m-8 mb-6 sm:mb-8 p-4 sm:p-8 text-white" style={{ backgroundColor: accent }}>
                     <div className="flex flex-col sm:flex-row justify-between gap-4 items-start">
@@ -462,7 +525,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </div>
                   </div>
                 )}
-                {template !== 'modern' && (
+                {template !== 'modern' && template !== 'letterhead' && (
                   <header className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
                     <div>
                       <div className="flex items-center gap-3 mb-2">
@@ -503,7 +566,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   </header>
                 )}
 
-                <section className="flex flex-col sm:flex-row justify-between gap-4 mb-8">
+                <section className={cn('flex flex-col sm:flex-row justify-between gap-4', template === 'letterhead' ? 'mb-5 text-sm' : 'mb-8')}>
                     <div>
                         <h3 className="font-semibold mb-1">Bill To:</h3>
                         <p>{invoice.customerName || 'Walk-in Customer'}</p>
@@ -534,15 +597,15 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                 <section className="overflow-x-auto">
                     <Table className="text-sm">
                         <TableHeader>
-                            <TableRow className="bg-muted/50"
-                              style={template === 'modern' ? { backgroundColor: `${accent}14` } : undefined}>
-                                <TableHead className="w-[48px] h-8 py-1">#</TableHead>
-                                <TableHead className="h-8 py-1">Item</TableHead>
-                                <TableHead className="h-8 py-1 text-center">Qty</TableHead>
-                                <TableHead className="h-8 py-1 text-center">Unit</TableHead>
-                                <TableHead className="h-8 py-1 text-right">Unit Price ({currencySymbol})</TableHead>
-                                <TableHead className="h-8 py-1 text-right">Discount</TableHead>
-                                <TableHead className="h-8 py-1 text-right">Total ({currencySymbol})</TableHead>
+                            {/* Header row filled solid with the brand primary color, white text */}
+                            <TableRow className="hover:bg-transparent" style={{ backgroundColor: brandColor }}>
+                                <TableHead className="w-[48px] h-8 py-1 text-white">#</TableHead>
+                                <TableHead className="h-8 py-1 text-white">Item</TableHead>
+                                <TableHead className="h-8 py-1 text-center text-white">Qty</TableHead>
+                                <TableHead className="h-8 py-1 text-center text-white">Unit</TableHead>
+                                <TableHead className="h-8 py-1 text-right text-white">Unit Price ({currencySymbol})</TableHead>
+                                <TableHead className="h-8 py-1 text-right text-white">Discount</TableHead>
+                                <TableHead className="h-8 py-1 text-right text-white">Total ({currencySymbol})</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -576,14 +639,15 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                             <span className="font-medium">{currencySymbol} {formatNumber(taxAmount)}</span>
                         </div>
                         <Separator />
-                        <div className="flex justify-between font-bold text-lg" style={template === 'modern' ? { color: accent } : undefined}>
+                        {/* Grand total filled solid with the brand primary color, white text */}
+                        <div className="flex justify-between font-bold text-lg text-white rounded-md px-3 py-2" style={{ backgroundColor: brandColor }}>
                             <span>Grand Total:</span>
                             <span>{currencySymbol} {formatNumber(invoice.amount)}</span>
                         </div>
                     </div>
                 </section>
 
-                <footer className="mt-16 text-center text-sm text-muted-foreground">
+                <footer className={cn('text-center text-sm text-muted-foreground', template === 'letterhead' ? 'mt-8' : 'mt-16')}>
                     <p className="whitespace-pre-wrap">{footerText}</p>
                 </footer>
               </div>

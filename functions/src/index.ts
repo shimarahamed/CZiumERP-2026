@@ -7,6 +7,7 @@ initializeApp();
 
 export {inviteUser} from "./inviteUser";
 export {setUserClaims} from "./setUserClaims";
+export {resetTenantUserPassword} from "./resetUserPassword";
 export {loginRateLimit} from "./loginRateLimit";
 export {auditTrail} from "./auditTrail";
 export {postInvoiceWithLedger} from "./postInvoiceWithLedger";

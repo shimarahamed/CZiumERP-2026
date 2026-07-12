@@ -83,6 +83,15 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
     const discountAmount = addMoney(itemDiscountsTotal, invoiceDiscountAmount);
     const taxAmount = percentOf(addMoney(netLines, -invoiceDiscountAmount), invoice.taxRate || 0);
     const regNumber = themeSettings.companyRegNumber?.trim();
+    // Letterhead receipt: the uploaded header artwork replaces the company name
+    // (logo stays as-is above it), with a faint logo watermark behind the slip.
+    const isLetterhead = themeSettings.receiptTemplate === 'letterhead';
+    const letterheadImage = themeSettings.letterheadImageUrl;
+    const letterheadWording = themeSettings.letterheadText?.trim();
+    const companyEmail = themeSettings.companyEmail?.trim();
+    const watermarkSrc = isLetterhead && themeSettings.letterheadWatermark !== false
+        ? (themeSettings.logoUrl || letterheadImage)
+        : undefined;
 
     const generateTextReceipt = () => {
       let receipt = `RECEIPT from ${companyName}\n`;
@@ -209,16 +218,38 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                   <DialogTitle>Invoice Receipt for {invoice.id}</DialogTitle>
                 </DialogHeader>
             )}
-            <div ref={printableRef} className={cn('printable-area receipt force-light-doc bg-white text-black p-4 overflow-y-auto flex-1 min-h-0')}>
+            <div ref={printableRef} className={cn('printable-area receipt force-light-doc bg-white text-black p-4 overflow-y-auto flex-1 min-h-0', isLetterhead && 'relative')}>
+                {watermarkSrc && (
+                    <Image src={watermarkSrc} alt="" aria-hidden width={300} height={300}
+                        className="pointer-events-none absolute inset-0 m-auto w-[45%] max-h-[40%] object-contain opacity-[0.05]" />
+                )}
                 <div className="text-center mb-4">
-                    {themeSettings.logoUrl ? (
-                        <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={40} height={40} className="mx-auto mb-2"/>
+                    {isLetterhead && (letterheadImage || letterheadWording) ? (
+                        /* Letterhead: logo on the left, header artwork/wordings on the
+                           right, both centered as a group at the top of the slip. */
+                        <div className="flex items-center justify-center gap-3 mb-2">
+                            {themeSettings.logoUrl ? (
+                                <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={40} height={40} className="shrink-0" />
+                            ) : (
+                                <StoreIcon className="h-10 w-10 shrink-0" />
+                            )}
+                            {letterheadImage ? (
+                                <Image src={letterheadImage} alt={companyName || 'Letterhead'} width={200} height={56} className="h-auto max-h-14 w-auto object-contain" />
+                            ) : (
+                                <h2 className="text-lg font-bold">{letterheadWording}</h2>
+                            )}
+                        </div>
                     ) : (
-                        <StoreIcon className="mx-auto h-10 w-10 mb-2" />
+                        themeSettings.logoUrl ? (
+                            <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={40} height={40} className="mx-auto mb-2"/>
+                        ) : (
+                            <StoreIcon className="mx-auto h-10 w-10 mb-2" />
+                        )
                     )}
-                    <h2 className="text-lg font-bold">{companyName}</h2>
+                    {!(isLetterhead && (letterheadImage || letterheadWording)) && <h2 className="text-lg font-bold">{companyName}</h2>}
                     <p>{companyAddress}</p>
-                    {themeSettings.companyPhone?.trim() && <p>{themeSettings.companyPhone.trim()}</p>}
+                    {themeSettings.companyPhone?.trim() && <p>{isLetterhead ? '' : ''}{themeSettings.companyPhone.trim()}</p>}
+                    {isLetterhead && companyEmail && <p>Email: {companyEmail}</p>}
                     {themeSettings.companyWebsite?.trim() && <p>{themeSettings.companyWebsite.trim()}</p>}
                     {regNumber && <p>Reg No: {regNumber}</p>}
                 </div>

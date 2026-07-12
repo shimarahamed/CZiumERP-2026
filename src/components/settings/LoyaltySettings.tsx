@@ -26,6 +26,10 @@ export default function LoyaltySettings() {
     const handleTierSettingChange = (tier: 'Silver' | 'Gold', field: 'points' | 'discount', value: string) => {
         const numericValue = Number(value);
         if (isNaN(numericValue)) return;
+        // A 0 (or blank) point threshold means "every customer qualifies as soon
+        // as they have any points at all" — treated by resolveLoyaltyTier as
+        // "not configured", so block it here rather than let it silently save.
+        if (field === 'points' && value.trim() !== '' && numericValue <= 0) return;
 
         setLocal(prev => {
             const currentTiers = prev.loyaltySettings?.tiers ?? { Silver: { points: 0, discount: 0 }, Gold: { points: 0, discount: 0 } };
@@ -38,6 +42,12 @@ export default function LoyaltySettings() {
     const handleSave = async () => {
         if (!canManage) {
             toast({ variant: 'destructive', title: 'Permission Denied' });
+            return;
+        }
+        const silverPoints = local.loyaltySettings?.tiers?.Silver?.points ?? 0;
+        const goldPoints = local.loyaltySettings?.tiers?.Gold?.points ?? 0;
+        if (goldPoints > 0 && silverPoints > 0 && goldPoints <= silverPoints) {
+            toast({ variant: 'destructive', title: 'Invalid Tier Thresholds', description: 'Gold must require more points than Silver.' });
             return;
         }
         setIsSaving(true);

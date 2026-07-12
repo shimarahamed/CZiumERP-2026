@@ -19,7 +19,7 @@ import Header from "@/components/Header";
 import { useToast } from "@/hooks/use-toast";
 import { useAppContext } from '@/context/AppContext';
 import type { User, Role } from '@/types';
-import { inviteTenantUser } from '@/lib/firebase';
+import { inviteTenantUser, resetTenantUserPassword } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, deleteField } from 'firebase/firestore';
 import { ALL_STORES_ID } from '@/lib/utils';
@@ -49,6 +49,9 @@ function UsersPageInner() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [userToEdit, setUserToEdit] = useState<User | null>(null);
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [userToResetPassword, setUserToResetPassword] = useState<User | null>(null);
+    const [resetPasswordValue, setResetPasswordValue] = useState('');
+    const [isResettingPassword, setIsResettingPassword] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all');
     const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -147,7 +150,7 @@ function UsersPageInner() {
             if (data.password) {
                 toast({
                     title: 'Password Not Changed',
-                    description: 'For security, existing passwords can only be reset via the admin script (scripts/manage-auth-users.mjs) or the Firebase console.',
+                    description: 'Use "Reset Password" from the user\'s menu to change an existing password.',
                 });
             }
             toast({ title: "User Updated", description: `${data.name}'s account has been updated.` });
@@ -196,6 +199,33 @@ function UsersPageInner() {
         setIsFormOpen(false);
     };
     
+    const handleResetPassword = async () => {
+        if (!userToResetPassword) return;
+        if (resetPasswordValue.length < 8) {
+            toast({ variant: 'destructive', title: 'Password Too Short', description: 'Password must be at least 8 characters.' });
+            return;
+        }
+        setIsResettingPassword(true);
+        try {
+            await resetTenantUserPassword(userToResetPassword.id, resetPasswordValue);
+            toast({ title: 'Password Reset', description: `${userToResetPassword.name}'s password has been changed. They must sign in again.` });
+            addActivityLog('User Password Reset', `Reset password for: ${userToResetPassword.name} (ID: ${userToResetPassword.id})`);
+            setUserToResetPassword(null);
+            setResetPasswordValue('');
+        } catch (err: unknown) {
+            const code = (err as { code?: string })?.code ?? '';
+            toast({
+                variant: 'destructive',
+                title: 'Could Not Reset Password',
+                description: code.includes('permission-denied')
+                    ? 'You do not have permission to reset this password.'
+                    : 'The server could not reset this password. If Cloud Functions are not deployed yet, use: node scripts/manage-auth-users.mjs setpass',
+            });
+        } finally {
+            setIsResettingPassword(false);
+        }
+    };
+
     const handleDelete = () => {
         if (!userToDelete || userToDelete.id === currentUser.id) {
             toast({ variant: 'destructive', title: "Action Forbidden", description: "You cannot delete your own account." });
@@ -280,6 +310,7 @@ function UsersPageInner() {
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                     <DropdownMenuItem onClick={() => handleOpenForm(user)}>Edit</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setUserToResetPassword(user); setResetPasswordValue(''); }}>Reset Password</DropdownMenuItem>
                                                     <DropdownMenuItem className="text-destructive" onClick={() => setUserToDelete(user)}>Delete</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -353,6 +384,33 @@ function UsersPageInner() {
                             </DialogFooter>
                         </form>
                     </Form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!userToResetPassword} onOpenChange={(open) => { if (!open) { setUserToResetPassword(null); setResetPasswordValue(''); } }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Reset Password</DialogTitle>
+                        <DialogDescription>
+                            Set a new password for {userToResetPassword?.name}. They will be signed out of all devices and must sign in again.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                        <FormLabel htmlFor="reset-password-input">New Password</FormLabel>
+                        <Input
+                            id="reset-password-input"
+                            type="password"
+                            placeholder="Minimum 8 characters"
+                            value={resetPasswordValue}
+                            onChange={(e) => setResetPasswordValue(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setUserToResetPassword(null); setResetPasswordValue(''); }}>Cancel</Button>
+                        <Button onClick={handleResetPassword} disabled={isResettingPassword}>
+                            {isResettingPassword ? 'Resetting...' : 'Reset Password'}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAppContext } from '@/context/AppContext';
-import type { ThemeSettings } from '@/types';
+import type { ThemeSettings, DocumentTemplate } from '@/types';
 import { PRESET_PALETTES, primaryReadable } from '@/lib/palettes';
 import { hexToHsl, hslToHex } from '@/lib/color-utils';
 import Image from 'next/image';
@@ -40,11 +41,12 @@ export default function CompanyBrandingSettings() {
         setLocal(template === 'minimal' ? { ...themeSettings, invoiceTemplate: 'lined' } : themeSettings);
     }, [themeSettings]);
 
-    const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Shared by the company logo and the letterhead artwork uploads.
+    // Upload security: restrict to real image types and a sane size —
+    // both images are stored as data URLs inside the settings document.
+    const makeImageUploadHandler = (field: 'logoUrl' | 'letterheadImageUrl') => (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        // Upload security: restrict to real image types and a sane size —
-        // the logo is stored as a data URL inside the settings document.
         const ALLOWED = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
         const MAX_BYTES = 512 * 1024; // 512KB keeps the settings doc well under Firestore's 1MB limit
         if (!ALLOWED.includes(file.type)) {
@@ -53,16 +55,18 @@ export default function CompanyBrandingSettings() {
             return;
         }
         if (file.size > MAX_BYTES) {
-            toast({ variant: 'destructive', title: 'Logo too large', description: 'Please use an image under 512KB.' });
+            toast({ variant: 'destructive', title: 'Image too large', description: 'Please use an image under 512KB.' });
             event.target.value = '';
             return;
         }
         const reader = new FileReader();
         reader.onloadend = () => {
-            setLocal(prev => ({ ...prev, logoUrl: reader.result as string }));
+            setLocal(prev => ({ ...prev, [field]: reader.result as string }));
         };
         reader.readAsDataURL(file);
     };
+    const handleLogoUpload = makeImageUploadHandler('logoUrl');
+    const handleLetterheadUpload = makeImageUploadHandler('letterheadImageUrl');
 
     const handleSave = async () => {
         if (!canManage) {
@@ -152,32 +156,61 @@ export default function CompanyBrandingSettings() {
                 <div className="space-y-4 rounded-lg border p-4">
                     <div>
                         <Label className="text-base">Document Templates</Label>
-                        <p className="text-sm text-muted-foreground">Applies to invoices, POS receipts, and printed documents.</p>
+                        <p className="text-sm text-muted-foreground">Choose a layout for each document type separately.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Invoice</Label>
+                            <Select value={local.invoiceTemplate ?? 'classic'} onValueChange={(v) => setLocal(prev => ({ ...prev, invoiceTemplate: v as DocumentTemplate }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="classic">Classic — logo left, bold header</SelectItem>
+                                    <SelectItem value="modern">Modern — color banner header</SelectItem>
+                                    <SelectItem value="lined">Lined — boxed, fully ruled table</SelectItem>
+                                    <SelectItem value="letterhead">Letterhead — custom header + watermark</SelectItem>
+                                    <SelectItem value="thermal-receipt">POS Receipt — 80mm thermal style</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Purchase Order</Label>
+                            <Select value={local.purchaseOrderTemplate ?? 'classic'} onValueChange={(v) => setLocal(prev => ({ ...prev, purchaseOrderTemplate: v as DocumentTemplate }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="classic">Classic — logo left, bold header</SelectItem>
+                                    <SelectItem value="modern">Modern — color banner header</SelectItem>
+                                    <SelectItem value="lined">Lined — boxed, fully ruled table</SelectItem>
+                                    <SelectItem value="letterhead">Letterhead — custom header + watermark</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">POS Receipt</Label>
+                            <Select value={local.receiptTemplate ?? 'thermal-receipt'} onValueChange={(v) => setLocal(prev => ({ ...prev, receiptTemplate: v as DocumentTemplate }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="thermal-receipt">Thermal — 80mm slip</SelectItem>
+                                    <SelectItem value="letterhead">Letterhead — slip with header artwork + watermark</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">RFQ</Label>
+                            <Select value={local.rfqTemplate ?? 'classic'} onValueChange={(v) => setLocal(prev => ({ ...prev, rfqTemplate: v as DocumentTemplate }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="classic">Classic — logo left, bold header</SelectItem>
+                                    <SelectItem value="modern">Modern — color banner header</SelectItem>
+                                    <SelectItem value="lined">Lined — boxed, fully ruled table</SelectItem>
+                                    <SelectItem value="letterhead">Letterhead — custom header + watermark</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">Applies once RFQ printing is available.</p>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label className="text-sm font-medium">Select Template</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {([
-                                    { id: 'classic', label: 'Classic', desc: 'Logo left, bold header' },
-                                    { id: 'modern', label: 'Modern', desc: 'Color banner header' },
-                                    { id: 'lined', label: 'Lined', desc: 'Boxed, fully ruled table' },
-                                    { id: 'thermal-receipt', label: 'POS Receipt', desc: '80mm thermal style' },
-                                ] as const).map(t => (
-                                    <button
-                                        key={t.id}
-                                        type="button"
-                                        onClick={() => setLocal(prev => ({ ...prev, invoiceTemplate: t.id }))}
-                                        className={`rounded-md border p-2 text-left transition-colors hover:bg-muted text-sm ${(local.invoiceTemplate ?? 'classic') === t.id ? 'border-primary ring-2 ring-primary bg-primary/5' : ''}`}
-                                    >
-                                        <p className="font-medium text-xs">{t.label}</p>
-                                        <p className="text-xs text-muted-foreground line-clamp-1">{t.desc}</p>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium">Preview</Label>
+                            <Label className="text-sm font-medium">Invoice Preview</Label>
                             <div className="border rounded-md p-3 bg-muted/30 text-xs">
                                 {(local.invoiceTemplate ?? 'classic') === 'classic' && (
                                     <div className="space-y-1">
@@ -220,7 +253,61 @@ export default function CompanyBrandingSettings() {
                                         <p className="text-[8px] border-t border-dashed pt-1">TOTAL $0.00</p>
                                     </div>
                                 )}
+                                {(local.invoiceTemplate ?? 'classic') === 'letterhead' && (
+                                    <div className="relative space-y-1 overflow-hidden">
+                                        {local.logoUrl && (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={local.logoUrl} alt="" aria-hidden className="pointer-events-none absolute inset-0 m-auto w-2/5 max-h-[60%] object-contain opacity-[0.05]" />
+                                        )}
+                                        <div className="flex justify-between items-center gap-2 pb-1 border-b-2" style={{ borderColor: local.documentAccent || '#1f2937' }}>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <div className="w-5 h-5 bg-primary rounded-sm shrink-0" />
+                                                {local.letterheadImageUrl ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={local.letterheadImageUrl} alt="Letterhead" className="h-10 w-auto object-contain" />
+                                                ) : (
+                                                    <p className="font-bold truncate" style={{ color: local.documentAccent || '#1f2937' }}>{local.letterheadText || local.companyName || 'Your Wordings'}</p>
+                                                )}
+                                            </div>
+                                            <div className="text-right text-[8px] text-muted-foreground shrink-0">
+                                                <p>Address</p>
+                                                <p>Tel: 000 000</p>
+                                                <p>Email: hi@co.com</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between text-[10px]">
+                                            <p className="font-bold">INVOICE #INV-001</p>
+                                            <p className="text-muted-foreground">Date · Status</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
+                        </div>
+                        <div className="space-y-3 rounded-md border p-3">
+                            <div>
+                                <Label className="text-sm font-medium">Letterhead Template</Label>
+                                <p className="text-xs text-muted-foreground">Used when a document above is set to “Letterhead”. The uploaded header artwork (or custom wordings) shows big right next to your company logo and replaces the company name text; company details move to the right side of the page.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="letterhead-image" className="text-xs">Header artwork</Label>
+                                <div className="flex items-center gap-3">
+                                    {local.letterheadImageUrl && (
+                                        <Image src={local.letterheadImageUrl} alt="Letterhead preview" width={96} height={40} className="h-10 w-auto rounded-md object-contain bg-muted p-1" />
+                                    )}
+                                    <Input id="letterhead-image" type="file" accept="image/*" onChange={handleLetterheadUpload} className="max-w-xs" />
+                                    {local.letterheadImageUrl && (
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => setLocal(prev => ({ ...prev, letterheadImageUrl: '' }))}>Remove</Button>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="letterhead-text" className="text-xs">Header wordings (used when no artwork is uploaded)</Label>
+                                <Input id="letterhead-text" placeholder="e.g. AL-SAFA TRADING & SERVICES" value={local.letterheadText ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, letterheadText: e.target.value }))} />
+                            </div>
+                            <label className="flex items-center gap-2 text-sm">
+                                <Switch checked={local.letterheadWatermark !== false} onCheckedChange={(c) => setLocal(prev => ({ ...prev, letterheadWatermark: c }))} />
+                                Show big logo watermark behind the page
+                            </label>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -229,7 +316,7 @@ export default function CompanyBrandingSettings() {
                             <Input id="doc-footer" placeholder="Thank you for your business!" value={local.documentFooter ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, documentFooter: e.target.value }))} />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="doc-accent">Header color (Modern template)</Label>
+                            <Label htmlFor="doc-accent">Accent color (Modern banner & Letterhead rule)</Label>
                             <div className="flex items-center gap-2">
                                 <input id="doc-accent" type="color" className="h-9 w-12 cursor-pointer rounded border bg-transparent p-1" value={local.documentAccent ?? '#1f2937'} onChange={(e) => setLocal(prev => ({ ...prev, documentAccent: e.target.value }))} />
                                 <span className="text-sm text-muted-foreground">{local.documentAccent ?? '#1f2937'}</span>

@@ -756,6 +756,11 @@ export type LoyaltySettings = {
     }
 }
 
+/** Printable document layouts. 'letterhead' = custom uploaded header image or
+ *  wordings on the left, compact company details on the right, with a large
+ *  low-opacity logo watermark behind the page body. */
+export type DocumentTemplate = 'classic' | 'modern' | 'lined' | 'thermal-receipt' | 'letterhead';
+
 export type ThemeSettings = {
     appName: string;
     logoUrl: string;
@@ -763,8 +768,22 @@ export type ThemeSettings = {
     backgroundColor: string;
     accentColor: string;
     invoicePrefix?: string;
-    /** Document templating: applies to invoices, POS receipts, and prints */
-    invoiceTemplate?: 'classic' | 'modern' | 'lined' | 'thermal-receipt';
+    /** Template for the A4 invoice. Also the legacy single template setting —
+     *  documents without their own setting below fall back to defaults, not this. */
+    invoiceTemplate?: DocumentTemplate;
+    /** Template for the POS receipt slip (thermal only today). */
+    receiptTemplate?: DocumentTemplate;
+    /** Template for printed purchase orders. Defaults to 'classic'. */
+    purchaseOrderTemplate?: DocumentTemplate;
+    /** Template reserved for RFQ printing (no printable RFQ document yet). */
+    rfqTemplate?: DocumentTemplate;
+    /** Letterhead template: uploaded header image (logo/wordings artwork) shown
+     *  instead of the company name. Data URL, same constraints as logoUrl. */
+    letterheadImageUrl?: string;
+    /** Letterhead template: custom wordings used when no image is uploaded. */
+    letterheadText?: string;
+    /** Letterhead template: show the big low-opacity logo watermark behind the page. */
+    letterheadWatermark?: boolean;
     documentFooter?: string;
     showLogoOnDocuments?: boolean;
     documentAccent?: string;

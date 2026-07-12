@@ -50,13 +50,19 @@ export async function inviteTenantUser(input: { email: string; password: string;
 }
 
 /**
+ * Reset an existing tenant user's password via the server (Cloud Function).
+ * Restricted to tenant admins and scoped to their own tenant.
+ */
+export async function resetTenantUserPassword(uid: string, newPassword: string): Promise<void> {
+  const call = httpsCallable(functions, 'resetTenantUserPassword');
+  await call({ uid, newPassword });
+}
+
+/**
  * Create a Firebase Auth account for a NEW user without replacing the
  * current admin's session. Uses a throwaway secondary app instance because
  * createUserWithEmailAndPassword signs in the created user on the app it
  * runs against.
- *
- * Note: changing an EXISTING user's password requires the Admin SDK
- * (see scripts/manage-auth-users.mjs) — it cannot be done from the client.
  */
 export async function createAuthAccount(email: string, password: string): Promise<void> {
   const secondary = initializeApp(auth.app.options, `secondary-${Date.now()}`);
