@@ -46,7 +46,7 @@ import InvoiceReceiptView from "@/components/InvoiceReceiptView";
 import { useAppContext } from "@/context/AppContext";
 import { getNextDocumentNumber, bumpCounterToAtLeast } from '@/lib/document-number';
 import { formatDateUK } from '@/lib/date-format';
-import { formatNumber, lineTotal, mulMoney, discountedUnitPrice } from '@/lib/money';
+import { formatNumber, lineTotal, mulMoney, discountedUnitPrice, invoiceDiscountAmount } from '@/lib/money';
 import type { Invoice, InvoiceItem, Customer, CustomerTier, RecurringInvoice, RecurringFrequency, Attachment, Currency } from "@/types";
 import { Combobox } from "@/components/ui/combobox";
 import BarcodeScanner from "@/components/BarcodeScanner";
@@ -100,7 +100,8 @@ const invoiceSchema = z.object({
   date: z.date(),
   items: z.array(invoiceItemSchema),
   customLines: z.array(customLineSchema),
-  discount: z.coerce.number().min(0).max(100).optional(),
+  discount: z.coerce.number().min(0).optional(),
+  discountType: z.enum(['percent', 'amount']).optional(),
   taxRate: z.coerce.number().min(0).max(100, "Tax rate cannot exceed 100%.").optional(),
   salesperson: z.string().optional(),
 }).refine(data => data.items.length + data.customLines.length > 0, {
@@ -120,7 +121,8 @@ const recurringSchema = z.object({
   currency: z.enum(['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR']).optional(),
   frequency: z.enum(['weekly', 'monthly', 'quarterly', 'yearly']),
   startDate: z.date(),
-  discount: z.coerce.number().min(0).max(100).optional(),
+  discount: z.coerce.number().min(0).optional(),
+  discountType: z.enum(['percent', 'amount']).optional(),
   taxRate: z.coerce.number().min(0).max(100).optional(),
   items: z.array(recurringItemSchema).min(1, "Must have at least one item."),
 });
@@ -215,6 +217,7 @@ export default function InvoicesPage() {
             items: [{ productId: '', quantity: 1 }],
             customLines: [],
             discount: 0,
+            discountType: 'amount',
             taxRate: 0,
             salesperson: '',
         },
@@ -232,6 +235,7 @@ export default function InvoicesPage() {
             frequency: 'monthly',
             startDate: new Date(),
             discount: 0,
+            discountType: 'amount',
             taxRate: 0,
             items: [{ productId: '', quantity: 1, price: 0, cost: 0 }],
         },
@@ -279,6 +283,7 @@ export default function InvoicesPage() {
     const watchedItems = useWatch({ control: form.control, name: 'items' });
     const watchedCustomLines = useWatch({ control: form.control, name: 'customLines' });
     const watchedDiscount = useWatch({ control: form.control, name: 'discount' }) || 0;
+    const watchedDiscountType = useWatch({ control: form.control, name: 'discountType' }) || 'amount';
     const watchedTaxRate = useWatch({ control: form.control, name: 'taxRate' }) || 0;
     const watchedCustomerId = useWatch({ control: form.control, name: 'customerId' });
     const watchedWalkInName = useWatch({ control: form.control, name: 'walkInName' });
@@ -306,7 +311,7 @@ export default function InvoicesPage() {
         return productTotal + customTotal;
     }, [watchedItems, watchedCustomLines, products]);
     const itemDiscounts = useMemo(() => grossSubtotal - subtotal, [grossSubtotal, subtotal]);
-    const discountAmount = useMemo(() => subtotal * (watchedDiscount / 100), [subtotal, watchedDiscount]);
+    const discountAmount = useMemo(() => invoiceDiscountAmount(subtotal, watchedDiscount, watchedDiscountType), [subtotal, watchedDiscount, watchedDiscountType]);
     const taxAmount = useMemo(() => (subtotal - discountAmount) * (watchedTaxRate / 100), [subtotal, discountAmount, watchedTaxRate]);
     const totalAmount = useMemo(() => subtotal - discountAmount + taxAmount, [subtotal, discountAmount, taxAmount]);
 
@@ -355,6 +360,7 @@ export default function InvoicesPage() {
                     items: invoiceToEdit.items.filter(item => !item.isCustom).map(item => ({ productId: item.productId, quantity: item.quantity })),
                     customLines: invoiceToEdit.items.filter(item => item.isCustom).map(item => ({ description: item.productName, quantity: item.quantity, price: item.price })),
                     discount: invoiceToEdit.discount || 0,
+                    discountType: invoiceToEdit.discountType || 'percent',
                     taxRate: invoiceToEdit.taxRate || 0,
                     salesperson: invoiceToEdit.salesperson ?? '',
                 });
@@ -377,6 +383,7 @@ export default function InvoicesPage() {
                     items: [{ productId: '', quantity: 1 }],
                     customLines: [],
                     discount: 0,
+                    discountType: 'amount',
                     taxRate: autoTaxRate,
                     salesperson: '',
                 });
@@ -399,9 +406,11 @@ export default function InvoicesPage() {
         if (customer?.tier) {
             const rate = tierDiscounts[customer.tier];
             form.setValue('discount', rate, { shouldValidate: true });
+            form.setValue('discountType', 'percent', { shouldValidate: true });
             setActiveTier(rate > 0 ? customer.tier : null);
         } else {
             form.setValue('discount', 0, { shouldValidate: true });
+            form.setValue('discountType', 'amount', { shouldValidate: true });
             setActiveTier(null);
         }
     }, [watchedCustomerId, customers, form, themeSettings.loyaltySettings]);
@@ -593,6 +602,7 @@ export default function InvoicesPage() {
                 items: newInvoiceItems,
                 amount: totalAmount,
                 discount: data.discount,
+                discountType: data.discountType,
                 taxRate: data.taxRate,
                 salesperson: data.salesperson || undefined,
                 attachments,
@@ -720,6 +730,7 @@ export default function InvoicesPage() {
                 items: newInvoiceItems,
                 amount: totalAmount,
                 discount: data.discount,
+                discountType: data.discountType,
                 taxRate: data.taxRate,
                 salesperson: data.salesperson || undefined,
                 attachments,
@@ -781,6 +792,7 @@ export default function InvoicesPage() {
                 items: newInvoiceItems,
                 amount: totalAmount,
                 discount: data.discount,
+                discountType: data.discountType,
                 taxRate: data.taxRate,
                 salesperson: data.salesperson || undefined,
                 attachments,
@@ -875,11 +887,12 @@ export default function InvoicesPage() {
                 frequency: rec.frequency,
                 startDate: parseISO(rec.startDate),
                 discount: rec.discount || 0,
+                discountType: rec.discountType || 'percent',
                 taxRate: rec.taxRate || 0,
                 items: rec.items.map(i => ({ productId: i.productId, quantity: i.quantity, price: i.price, cost: i.cost })),
             });
         } else {
-            recurringForm.reset({ customerId: 'none', currency: undefined, frequency: 'monthly', startDate: new Date(), discount: 0, taxRate: 0, items: [{ productId: '', quantity: 1, price: 0, cost: 0 }] });
+            recurringForm.reset({ customerId: 'none', currency: undefined, frequency: 'monthly', startDate: new Date(), discount: 0, discountType: 'amount', taxRate: 0, items: [{ productId: '', quantity: 1, price: 0, cost: 0 }] });
         }
         setIsRecurringFormOpen(true);
     };
@@ -891,17 +904,17 @@ export default function InvoicesPage() {
             return { productId: i.productId, productName: product?.name ?? i.productId, quantity: i.quantity, price: i.price, cost: i.cost };
         });
         const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-        const disc = subtotal * ((data.discount ?? 0) / 100);
+        const disc = invoiceDiscountAmount(subtotal, data.discount ?? 0, data.discountType ?? 'amount');
         const tax = (subtotal - disc) * ((data.taxRate ?? 0) / 100);
         const amount = subtotal - disc + tax;
         const startStr = format(data.startDate, 'yyyy-MM-dd');
 
         if (recurringToEdit) {
-            const updated: RecurringInvoice = { ...recurringToEdit, customerId: data.customerId === 'none' ? undefined : data.customerId, customerName: data.customerId === 'none' ? undefined : customer?.name, items, amount, currency: data.currency, frequency: data.frequency, startDate: startStr, discount: data.discount, taxRate: data.taxRate };
+            const updated: RecurringInvoice = { ...recurringToEdit, customerId: data.customerId === 'none' ? undefined : data.customerId, customerName: data.customerId === 'none' ? undefined : customer?.name, items, amount, currency: data.currency, frequency: data.frequency, startDate: startStr, discount: data.discount, discountType: data.discountType, taxRate: data.taxRate };
             setRecurringInvoices(recurringInvoices.map(r => r.id === recurringToEdit.id ? updated : r));
             toast({ title: 'Recurring Invoice Updated' });
         } else {
-            const newRec: RecurringInvoice = { id: `rec-${Date.now()}`, storeId: currentStore?.id, customerId: data.customerId === 'none' ? undefined : data.customerId, customerName: data.customerId === 'none' ? undefined : customer?.name, items, amount, currency: data.currency, frequency: data.frequency, startDate: startStr, nextDueDate: startStr, discount: data.discount, taxRate: data.taxRate, status: 'active', createdAt: new Date().toISOString() };
+            const newRec: RecurringInvoice = { id: `rec-${Date.now()}`, storeId: currentStore?.id, customerId: data.customerId === 'none' ? undefined : data.customerId, customerName: data.customerId === 'none' ? undefined : customer?.name, items, amount, currency: data.currency, frequency: data.frequency, startDate: startStr, nextDueDate: startStr, discount: data.discount, discountType: data.discountType, taxRate: data.taxRate, status: 'active', createdAt: new Date().toISOString() };
             setRecurringInvoices([newRec, ...recurringInvoices]);
             toast({ title: 'Recurring Invoice Created' });
             addActivityLog('Recurring Invoice Created', `Created recurring invoice for ${customer?.name ?? 'N/A'} (${data.frequency}).`);
@@ -923,6 +936,7 @@ export default function InvoicesPage() {
             amount: rec.amount,
             currency: rec.currency,
             discount: rec.discount,
+            discountType: rec.discountType,
             taxRate: rec.taxRate,
             status: 'pending',
             date: format(new Date(), 'yyyy-MM-dd'),
@@ -1262,8 +1276,8 @@ export default function InvoicesPage() {
                                 )} />
                                 <FormField control={form.control} name="discount" render={({ field }) => (
                                     <FormItem className="flex flex-col">
-                                        <FormLabel className="text-xs text-muted-foreground">Discount (%)</FormLabel>
-                                        <FormControl><Input type="number" step="0.1" placeholder="0" {...field} readOnly={!!activeTier} /></FormControl>
+                                        <FormLabel className="text-xs text-muted-foreground">Discount ({currencySymbol})</FormLabel>
+                                        <FormControl><Input type="number" step="0.01" placeholder="0" {...field} readOnly={!!activeTier} /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
@@ -1299,7 +1313,7 @@ export default function InvoicesPage() {
                             )}
                             {activeTier && (
                                 <p className="-mt-3 flex items-center gap-1 text-xs text-primary">
-                                    <Info className="h-3 w-3" /> {`A ${form.getValues('discount')}% ${activeTier} tier discount is applied.`}
+                                    <Info className="h-3 w-3" /> {`A ${form.getValues('discount')}% ${activeTier} tier discount is applied (${currencySymbol}${formatNumber(discountAmount)}).`}
                                 </p>
                             )}
 
@@ -1387,7 +1401,7 @@ export default function InvoicesPage() {
                             {/* Totals */}
                             <div className="rounded-lg border bg-muted/30 p-4 space-y-1.5 text-sm">
                                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
-                                <div className="flex justify-between"><span className="text-muted-foreground">Discount{watchedDiscount > 0 ? ` (incl. ${watchedDiscount}%)` : ''}</span><span className="tabular-nums text-destructive">-{currencySymbol} {formatNumber(itemDiscounts + discountAmount)}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Discount{watchedDiscount > 0 ? ` (incl. ${watchedDiscountType === 'amount' ? `${currencySymbol}${watchedDiscount}` : `${watchedDiscount}%`})` : ''}</span><span className="tabular-nums text-destructive">-{currencySymbol} {formatNumber(itemDiscounts + discountAmount)}</span></div>
                                 <div className="flex justify-between"><span className="text-muted-foreground">Tax ({watchedTaxRate}%)</span><span className="tabular-nums">+{currencySymbol} {formatNumber(taxAmount)}</span></div>
                                 <div className="flex justify-between pt-1.5 mt-1.5 border-t font-semibold text-base"><span>Total</span><span className="tabular-nums">{currencySymbol} {formatNumber(totalAmount)}</span></div>
                                 {!invoiceToEdit && (themeSettings.invoiceApprovalThreshold ?? 0) > 0 && totalAmount > (themeSettings.invoiceApprovalThreshold ?? 0) && (
@@ -1494,7 +1508,7 @@ export default function InvoicesPage() {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <FormField control={recurringForm.control} name="discount" render={({ field }) => (
-                                    <FormItem><FormLabel>Discount (%)</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel>Discount ({currencySymbol})</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={recurringForm.control} name="taxRate" render={({ field }) => (
                                     <FormItem><FormLabel>Tax Rate (%)</FormLabel><FormControl><Input type="number" step="0.1" {...field} /></FormControl><FormMessage /></FormItem>

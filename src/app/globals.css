@@ -239,6 +239,32 @@
     line-height: 1.3 !important;
   }
 
+  /* Multi-page invoices/POs: avoid Chrome clipping a table row, the totals
+     block, or the footer signature area mid-element across a page boundary,
+     and repeat the table header on every printed page. */
+  body.printing-invoice .printable-area table thead {
+    display: table-header-group;
+  }
+  body.printing-invoice .printable-area tr,
+  body.printing-invoice .printable-area tfoot {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Letterhead watermark: on screen it's positioned at `top: 75%` of
+     `.printable-area`'s scrollHeight, which varies with how the document was
+     opened (embedded post-create preview vs. the invoices-list dialog have
+     different surrounding chrome), so that percentage can land close enough
+     to the page's bottom edge to get clipped by the physical page boundary.
+     Pin it to a fixed spot on the first printed page instead, independent of
+     the container's on-screen height. */
+  body.printing-invoice .letterhead-watermark {
+    position: fixed !important;
+    top: 130mm !important;
+    bottom: auto !important;
+    transform: none !important;
+  }
+
   .printable-report-area [data-state="inactive"] {
     display: none !important;
   }

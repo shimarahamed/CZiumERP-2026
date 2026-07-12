@@ -12,7 +12,7 @@ import { useAppContext } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
 import { Store as StoreIcon } from '@/components/icons';
 import Image from 'next/image';
-import { addMoney, mulMoney, percentOf, formatNumber, lineTotal } from '@/lib/money';
+import { addMoney, mulMoney, percentOf, formatNumber, lineTotal, invoiceDiscountAmount } from '@/lib/money';
 import { sendTenantEmail, emailShell, escapeHtml, isSmtpConfigured } from '@/lib/email';
 import { sendTenantSms, sendTenantWhatsapp, sendAndLogMessage } from '@/lib/messaging';
 import { nodeToPdfBase64 } from '@/lib/invoice-pdf';
@@ -111,9 +111,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
     const grossSubtotal = addMoney(...invoice.items.map(item => mulMoney(item.price, item.quantity)), 0);
     const netLines = addMoney(...invoice.items.map(item => lineTotal(item.price, item.quantity, item.discount, item.discountType)), 0);
     const itemDiscountsTotal = addMoney(grossSubtotal, -netLines);
-    const invoiceDiscountAmount = percentOf(netLines, invoice.discount || 0);
-    const totalDiscount = addMoney(itemDiscountsTotal, invoiceDiscountAmount);
-    const taxAmount = percentOf(addMoney(netLines, -invoiceDiscountAmount), invoice.taxRate || 0);
+    const invoiceLevelDiscount = invoiceDiscountAmount(netLines, invoice.discount, invoice.discountType);
+    const totalDiscount = addMoney(itemDiscountsTotal, invoiceLevelDiscount);
+    const taxAmount = percentOf(addMoney(netLines, -invoiceLevelDiscount), invoice.taxRate || 0);
     /** Plain formatted number — no "%" and no currency symbol, since a line's
      *  discount can be either a percentage or a fixed amount and the column
      *  header + the single currency caption under the table already say which.
@@ -125,6 +125,10 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
      *  stands alone in a sentence rather than under a labelled table column. */
     const itemDiscountLabelWithUnit = (item: typeof invoice.items[number]) =>
         item.discountType === 'amount' ? `${currencySymbol}${formatNumber(item.discount ?? 0)}` : `${formatNumber(item.discount ?? 0)}%`;
+    // Invoice-level discount suffix, e.g. " (incl. 10%)" or " (incl. $5.00)".
+    const invoiceDiscountSuffix = invoice.discount
+        ? ` (incl. ${invoice.discountType === 'amount' ? `${currencySymbol}${formatNumber(invoice.discount)}` : `${invoice.discount}%`})`
+        : '';
     // Falls back to "Pcs" for lines saved before unit tracking existed.
     const qtyWithUnit = (item: typeof invoice.items[number]) =>
         `${item.quantity} ${item.unit || 'Pcs'}`;
@@ -165,7 +169,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
       });
       receipt += `\nSubtotal: ${currencySymbol} ${formatNumber(grossSubtotal)}\n`;
       if (totalDiscount > 0) {
-        receipt += `Discount${invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}: -${currencySymbol} ${formatNumber(totalDiscount)}\n`;
+        receipt += `Discount${invoiceDiscountSuffix}: -${currencySymbol} ${formatNumber(totalDiscount)}\n`;
       }
       if (invoice.taxRate) {
         receipt += `Tax (${invoice.taxRate}%): +${currencySymbol} ${formatNumber(taxAmount)}\n`;
@@ -330,7 +334,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                 </div>
                 <div className="space-y-0.5 pb-2 mb-2 border-b-2 border-black">
                   <div className="flex justify-between"><span>Subtotal</span><span>{currencySymbol}{formatNumber(grossSubtotal)}</span></div>
-                  {totalDiscount > 0 && <div className="flex justify-between"><span>Discount{invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}</span><span>-{currencySymbol}{formatNumber(totalDiscount)}</span></div>}
+                  {totalDiscount > 0 && <div className="flex justify-between"><span>Discount{invoiceDiscountSuffix}</span><span>-{currencySymbol}{formatNumber(totalDiscount)}</span></div>}
                   <div className="flex justify-between"><span>Tax {invoice.taxRate || 0}%</span><span>{currencySymbol}{formatNumber(taxAmount)}</span></div>
                   <div className="flex justify-between font-bold text-sm mt-1"><span>TOTAL</span><span>{currencySymbol}{formatNumber(invoice.amount)}</span></div>
                 </div>
@@ -430,7 +434,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   <div className="flex justify-end">
                     <div className="w-full sm:w-72 p-4 space-y-2">
                       <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span><span className="font-medium">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Discount{invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}:</span><span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Discount{invoiceDiscountSuffix}:</span><span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span><span className="font-medium">{currencySymbol} {formatNumber(taxAmount)}</span></div>
                       {/* Grand total filled solid with the brand primary color, white text */}
                       <div className="flex justify-between font-bold text-lg text-white rounded-md px-3 py-2 mt-1" style={{ backgroundColor: brandColor }}>
@@ -449,11 +453,21 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
               /* ---- A4 invoice: classic / modern / letterhead ---- */
               <div ref={printableRef} className={cn('printable-area force-light-doc bg-white text-black overflow-y-auto flex-1 min-h-0', template === 'letterhead' ? 'relative p-4 sm:p-6' : 'p-4 sm:p-8')}>
                 {template === 'letterhead' && watermarkSrc && (
-                  /* Watermark: centred logo behind the page. Rendered as a
-                     low-opacity overlay (pointer-events off) so it shows through
-                     without needing a stacking-context rework of the body. */
+                  /* Watermark: centred logo behind the page, positioned ~3/4 down the
+                     first page. `absolute` (not `fixed`) so it stays anchored to this
+                     scrollable printable-area instead of the browser viewport — `fixed`
+                     made it overflow outside the dialog/print bounds. Sized in fixed px
+                     (not a % of the container) so it can't blow up when the container is
+                     tall. `top: 75%` of `.printable-area` works on screen (a bounded
+                     dialog), but the container's real scrollHeight varies with how it's
+                     opened (embedded preview vs. the invoices-list dialog have different
+                     surrounding chrome/margins), so on the list-page dialog that same 75%
+                     could land close enough to the content's bottom edge that half the
+                     420px-tall image spills past the last printed page and gets clipped.
+                     `letterhead-watermark` gets a fixed, page-relative position for print
+                     only (see globals.css) so it's independent of container height. */
                   <Image src={watermarkSrc} alt="" aria-hidden width={600} height={600}
-                    className="pointer-events-none fixed inset-0 m-auto w-[45%] max-h-[50%] object-contain opacity-[0.05]" />
+                    className="letterhead-watermark pointer-events-none absolute left-0 right-0 top-[75%] -translate-y-1/2 mx-auto w-[60%] max-w-[420px] max-h-[420px] object-contain opacity-[0.1]" />
                 )}
                 {template === 'letterhead' && (
                   <header className="mb-6">
@@ -467,7 +481,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                           gap as breathing room. */}
                       <div className="flex flex-1 items-center gap-3 min-w-0">
                         {showLogo && (themeSettings.logoUrl
-                          ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={80} height={80} className="rounded-lg object-contain shrink-0" />
+                          ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={100} height={100} className="rounded-lg object-contain shrink-0" />
                           : <StoreIcon className="h-8 w-8 text-primary shrink-0" />)}
                         {letterheadImage ? (
                           <Image src={letterheadImage} alt={companyName || 'Letterhead'} width={600} height={160} className="w-full max-h-20 object-contain object-left" />
@@ -610,7 +624,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                         </TableHeader>
                         <TableBody>
                             {invoice.items.map((item, index) => (
-                                <TableRow key={`invoice-item-${index}`}>
+                                <TableRow key={`invoice-item-${index}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                                     <TableCell className="py-1.5">{index + 1}</TableCell>
                                     <TableCell className="py-1.5 font-medium">{item.productName}</TableCell>
                                     <TableCell className="py-1.5 text-center">{item.quantity}</TableCell>
@@ -624,14 +638,14 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </Table>
                 </section>
 
-                <section className="flex justify-end mt-6">
+                <section className="flex justify-end mt-6" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                     <div className="w-full max-w-xs space-y-2">
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Subtotal:</span>
                             <span className="font-medium">{currencySymbol} {formatNumber(grossSubtotal)}</span>
                         </div>
                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Discount{invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}:</span>
+                            <span className="text-muted-foreground">Discount{invoiceDiscountSuffix}:</span>
                             <span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span>
                         </div>
                         <div className="flex justify-between">
@@ -647,7 +661,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </div>
                 </section>
 
-                <footer className={cn('text-center text-sm text-muted-foreground', template === 'letterhead' ? 'mt-8' : 'mt-16')}>
+                <footer className={cn('text-center text-sm text-muted-foreground', template === 'letterhead' ? 'mt-8' : 'mt-16')} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                     <p className="whitespace-pre-wrap">{footerText}</p>
                 </footer>
               </div>

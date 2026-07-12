@@ -3,7 +3,7 @@
 import { app } from '@/lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Invoice, IntercompanyTransaction, LedgerEntry, PayrollRun } from '@/types';
-import { addMoney, mulMoney, percentOf, lineTotal } from '@/lib/money';
+import { addMoney, mulMoney, percentOf, lineTotal, invoiceDiscountAmount } from '@/lib/money';
 
 const POSTING_REGION = 'asia-south1';
 
@@ -67,7 +67,7 @@ export async function postInvoiceServerSideFast(
 export function buildInvoiceLedgerEntries(invoice: Invoice): LedgerEntry[] {
   const netSubtotal = addMoney(...invoice.items.map(i => lineTotal(i.price, i.quantity, i.discount, i.discountType)), 0);
   const cogs = addMoney(...invoice.items.map(i => mulMoney(i.cost ?? 0, i.quantity)), 0);
-  const discount = invoice.discount ? percentOf(netSubtotal, invoice.discount) : 0;
+  const discount = invoiceDiscountAmount(netSubtotal, invoice.discount, invoice.discountType);
   const taxable = addMoney(netSubtotal, -discount);
   const tax = invoice.taxRate ? percentOf(taxable, invoice.taxRate) : 0;
   const total = addMoney(taxable, tax);

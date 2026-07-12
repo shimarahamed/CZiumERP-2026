@@ -168,10 +168,14 @@ const FullPurchaseOrder = ({ purchaseOrder }: FullPurchaseOrderProps) => {
               /* ---- Classic / Modern / Letterhead ---- */
               <div className={cn('printable-area force-light-doc bg-white text-black overflow-y-auto flex-1 min-h-0', template === 'letterhead' ? 'relative p-4 sm:p-6' : 'p-4 sm:p-8')}>
                 {template === 'letterhead' && watermarkSrc && (
-                  /* `fixed` (not `absolute`) so it centers against the viewport/print
-                     page rather than the full scrollable content height. */
+                  /* `absolute` (not `fixed`) so it stays anchored to this scrollable
+                     printable-area instead of the browser viewport — `fixed` made it
+                     overflow outside the dialog/print bounds. Sized in fixed px (not a
+                     % of the container) because at print time `.printable-area`'s height
+                     is the FULL multi-page document, so a percentage height would blow up
+                     to many times a single A4 page and get clipped by the page edge. */
                   <Image src={watermarkSrc} alt="" aria-hidden width={600} height={600}
-                    className="pointer-events-none fixed inset-0 m-auto w-[45%] max-h-[50%] object-contain opacity-[0.05]" />
+                    className="letterhead-watermark pointer-events-none absolute left-0 right-0 top-[75%] -translate-y-1/2 mx-auto w-[60%] max-w-[420px] max-h-[420px] object-contain opacity-[0.05]" />
                 )}
                 {template === 'letterhead' && (
                   <header className="mb-6">

@@ -26,7 +26,7 @@ import {
 } from '@/components/icons';
 import { Textarea } from '@/components/ui/textarea';
 import { getDefaultWarehouse, stockLevelId } from '@/lib/warehouse';
-import { discountedUnitPrice, formatNumber, lineTotal } from '@/lib/money';
+import { discountedUnitPrice, formatNumber, lineTotal, invoiceDiscountAmount } from '@/lib/money';
 import { computeStockConsumption } from '@/lib/pos-sale';
 import { iconFor } from '@/lib/product-icon';
 import { cn } from '@/lib/utils';
@@ -85,7 +85,7 @@ function POSInner() {
   const [customerId, setCustomerId] = useState('walk-in');
   const [walkInName, setWalkInName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
-  const [discountPct, setDiscountPct] = useState('');
+  const [discountAmtInput, setDiscountAmtInput] = useState('');
   const [taxPct, setTaxPct] = useState('');
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
@@ -216,14 +216,14 @@ function POSInner() {
   // surfaced in the Discount row instead of silently lowering the subtotal.
   const grossSubtotal = cart.reduce((s, l) => s + lineTotal(l.price, l.qty), 0);
   const itemDiscounts = grossSubtotal - subtotal;
-  const discountAmt = subtotal * ((Number(discountPct) || 0) / 100);
+  const discountAmt = invoiceDiscountAmount(subtotal, Number(discountAmtInput) || 0, 'amount');
   const taxAmt = (subtotal - discountAmt) * ((Number(taxPct) || 0) / 100);
   const total = subtotal - discountAmt + taxAmt;
   const itemCount = cart.reduce((s, l) => s + l.qty, 0);
 
   const clearSale = () => {
     setCart([]); setCustomerId('walk-in'); setWalkInName(''); setWalkInPhone('');
-    setDiscountPct(''); setTaxPct(''); setPaymentMethod('cash');
+    setDiscountAmtInput(''); setTaxPct(''); setPaymentMethod('cash');
     setNotes(''); setShowNotes(false); setCustomData({}); setSalesperson('');
     setSaveAsCustomer(false); setShowCustomerDetails(false);
     setNewCustomer({ name: '', phone: '', email: '', company: '', billingAddress: '' });
@@ -343,7 +343,8 @@ function POSInner() {
         dueDate: format(addDays(now, 30), 'yyyy-MM-dd'),
         items,
         amount: total,
-        discount: Number(discountPct) || 0,
+        discount: Number(discountAmtInput) || 0,
+        discountType: 'amount',
         taxRate: Number(taxPct) || 0,
         paymentMethod,
         ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -652,8 +653,8 @@ function POSInner() {
         <div className="border-t p-3 space-y-2 bg-gradient-to-t from-muted/40 to-transparent">
           <div className="grid grid-cols-2 gap-1.5">
             <div className="relative">
-              <Percent className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-              <Input value={discountPct} onChange={e => setDiscountPct(e.target.value)} type="number" placeholder="Discount" className="h-8 pl-6 rounded-lg text-xs" />
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{currencySymbol}</span>
+              <Input value={discountAmtInput} onChange={e => setDiscountAmtInput(e.target.value)} type="number" placeholder="Discount" className="h-8 pl-6 rounded-lg text-xs" />
             </div>
             <div className="relative">
               <Percent className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -683,7 +684,7 @@ function POSInner() {
           </div>
           <div className="space-y-1 text-xs">
             <Row label="Subtotal" value={`${currencySymbol} ${formatNumber(grossSubtotal)}`} />
-            {(itemDiscounts + discountAmt) > 0 && <Row label={`Discount${Number(discountPct) > 0 ? ` (incl. ${discountPct}%)` : ''}`} value={`-${currencySymbol} ${formatNumber(itemDiscounts + discountAmt)}`} className="text-destructive" />}
+            {(itemDiscounts + discountAmt) > 0 && <Row label={`Discount${Number(discountAmtInput) > 0 ? ` (incl. ${currencySymbol}${discountAmtInput})` : ''}`} value={`-${currencySymbol} ${formatNumber(itemDiscounts + discountAmt)}`} className="text-destructive" />}
             {taxAmt > 0 && <Row label={`Tax (${taxPct}%)`} value={`+${currencySymbol} ${formatNumber(taxAmt)}`} />}
             <div className="flex justify-between pt-1.5 mt-1 border-t font-semibold text-base">
               <span>Total</span><span className="tabular-nums">{currencySymbol} {formatNumber(total)}</span>
@@ -798,7 +799,7 @@ function POSInner() {
             )}
             <div className="space-y-1 text-sm border-t pt-2">
               <Row label="Subtotal" value={`${currencySymbol} ${formatNumber(grossSubtotal)}`} />
-              {(itemDiscounts + discountAmt) > 0 && <Row label={`Discount${Number(discountPct) > 0 ? ` (incl. ${discountPct}%)` : ''}`} value={`-${currencySymbol} ${formatNumber(itemDiscounts + discountAmt)}`} className="text-destructive" />}
+              {(itemDiscounts + discountAmt) > 0 && <Row label={`Discount${Number(discountAmtInput) > 0 ? ` (incl. ${currencySymbol}${discountAmtInput})` : ''}`} value={`-${currencySymbol} ${formatNumber(itemDiscounts + discountAmt)}`} className="text-destructive" />}
               {taxAmt > 0 && <Row label={`Tax (${taxPct}%)`} value={`+${currencySymbol} ${formatNumber(taxAmt)}`} />}
               <div className="flex justify-between pt-1.5 mt-1 border-t font-semibold text-base">
                 <span>Total</span><span className="tabular-nums">{currencySymbol} {formatNumber(total)}</span>

@@ -551,7 +551,10 @@ export type Invoice = {
   /** ISO timestamp of when the invoice was created (for receipt time-of-sale). */
   createdAt?: string;
   dueDate?: string;
+  /** Invoice-level discount applied on top of net item totals: a % of the net
+   *  subtotal ('percent', 0–100, default) or a fixed currency amount ('amount'). */
   discount?: number;
+  discountType?: 'percent' | 'amount';
   taxRate?: number;
   currency?: Currency;
   /** How the sale was tendered — shown on the invoice/receipt. */
@@ -595,6 +598,7 @@ export type RecurringInvoice = {
   amount: number;
   taxRate?: number;
   discount?: number;
+  discountType?: 'percent' | 'amount';
   currency?: Currency;
   frequency: RecurringFrequency;
   startDate: string;

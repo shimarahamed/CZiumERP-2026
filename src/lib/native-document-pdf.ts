@@ -1,7 +1,7 @@
 'use client';
 
 import type { Invoice, ThemeSettings } from '@/types';
-import { addMoney, formatNumber, lineTotal, mulMoney, percentOf } from '@/lib/money';
+import { addMoney, formatNumber, lineTotal, mulMoney, percentOf, invoiceDiscountAmount } from '@/lib/money';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 
 type DocumentBranding = {
@@ -40,7 +40,7 @@ function totals(invoice: Invoice) {
   const gross = addMoney(...invoice.items.map(item => mulMoney(item.price, item.quantity)), 0);
   const net = addMoney(...invoice.items.map(item => lineTotal(item.price, item.quantity, item.discount, item.discountType)), 0);
   const itemDiscount = addMoney(gross, -net);
-  const invoiceDiscount = percentOf(net, invoice.discount || 0);
+  const invoiceDiscount = invoiceDiscountAmount(net, invoice.discount, invoice.discountType);
   const discount = addMoney(itemDiscount, invoiceDiscount);
   const tax = percentOf(addMoney(net, -invoiceDiscount), invoice.taxRate || 0);
   return { gross, discount, tax };

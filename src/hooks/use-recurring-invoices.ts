@@ -51,6 +51,7 @@ export function useRecurringInvoices() {
           amount: ri.amount,
           taxRate: ri.taxRate,
           discount: ri.discount,
+          discountType: ri.discountType,
           currency: ri.currency,
           status: 'pending',
           date: nextDue,

@@ -48,6 +48,19 @@ export function lineTotal(
   return addMoney(gross, -percentOf(gross, discount));
 }
 
+/** Invoice/cart-level discount amount off a net subtotal: a % of the subtotal
+ *  (discountType 'percent', default) or a fixed currency amount ('amount'),
+ *  capped so it never exceeds the subtotal. */
+export function invoiceDiscountAmount(
+  subtotal: number,
+  discount = 0,
+  discountType: 'percent' | 'amount' = 'percent',
+): number {
+  if (!(discount > 0)) return 0;
+  if (discountType === 'amount') return Math.min(discount, subtotal);
+  return percentOf(subtotal, discount);
+}
+
 /** Net unit price after the product's own discount (percent or fixed amount). */
 export function discountedUnitPrice(
   unitPrice: number,

@@ -17,7 +17,7 @@ import { downloadReceiptDocumentPdf } from '@/lib/native-document-pdf';
 import { CustomFieldsDisplay } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
-import { formatNumber, lineTotal, mulMoney, addMoney, percentOf } from '@/lib/money';
+import { formatNumber, lineTotal, mulMoney, addMoney, percentOf, invoiceDiscountAmount } from '@/lib/money';
 
 interface InvoiceDetailProps {
     invoice: Invoice;
@@ -79,9 +79,13 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
     const grossSubtotal = invoice.items.reduce((acc, item) => acc + mulMoney(item.price, item.quantity), 0);
     const netLines = invoice.items.reduce((acc, item) => acc + lineTotal(item.price, item.quantity, item.discount, item.discountType), 0);
     const itemDiscountsTotal = addMoney(grossSubtotal, -netLines);
-    const invoiceDiscountAmount = percentOf(netLines, invoice.discount || 0);
-    const discountAmount = addMoney(itemDiscountsTotal, invoiceDiscountAmount);
-    const taxAmount = percentOf(addMoney(netLines, -invoiceDiscountAmount), invoice.taxRate || 0);
+    const invoiceLevelDiscount = invoiceDiscountAmount(netLines, invoice.discount, invoice.discountType);
+    const discountAmount = addMoney(itemDiscountsTotal, invoiceLevelDiscount);
+    const taxAmount = percentOf(addMoney(netLines, -invoiceLevelDiscount), invoice.taxRate || 0);
+    // Invoice-level discount suffix, e.g. " (incl. 10%)" or " (incl. $5.00)".
+    const invoiceDiscountSuffix = invoice.discount
+        ? ` (incl. ${invoice.discountType === 'amount' ? `${currencySymbol}${formatNumber(invoice.discount)}` : `${invoice.discount}%`})`
+        : '';
     const regNumber = themeSettings.companyRegNumber?.trim();
     // Letterhead receipt: the uploaded header artwork replaces the company name
     // (logo stays as-is above it), with a faint logo watermark behind the slip.
@@ -107,7 +111,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
       });
       receipt += `\nSubtotal: ${currencySymbol} ${formatNumber(grossSubtotal)}\n`;
       if (discountAmount > 0) {
-        receipt += `Discount${invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}: -${currencySymbol} ${formatNumber(discountAmount)}\n`;
+        receipt += `Discount${invoiceDiscountSuffix}: -${currencySymbol} ${formatNumber(discountAmount)}\n`;
       }
       if (invoice.taxRate) {
         receipt += `Tax (${invoice.taxRate}%): +${currencySymbol} ${formatNumber(taxAmount)}\n`;
@@ -334,7 +338,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     </div>
                     {discountAmount > 0 && (
                         <div className="flex justify-between">
-                            <span>Discount{invoice.discount ? ` (incl. ${invoice.discount}%)` : ''}</span>
+                            <span>Discount{invoiceDiscountSuffix}</span>
                             <span>-{currencySymbol} {formatNumber(discountAmount)}</span>
                         </div>
                     )}
