@@ -1,13 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, db } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useToast } from '@/hooks/use-toast';
+import type { PlatformSettings } from '@/types';
+import { Loader2 } from '@/components/icons';
+
+const DEFAULT_POWERED_BY = 'Powered by CZium Tech | www.czium.com';
 
 type SuperAdminRecord = { id: string; email?: string | null };
 type FunctionsStatus = 'unknown' | 'checking' | 'available' | 'unavailable';
@@ -24,6 +31,9 @@ const FUNCTION_CAPABILITIES = [
 export default function SuperAdminSystemPage() {
   const [superAdmins, setSuperAdmins] = useState<SuperAdminRecord[]>([]);
   const [fnStatus, setFnStatus] = useState<FunctionsStatus>('unknown');
+  const [poweredByText, setPoweredByText] = useState(DEFAULT_POWERED_BY);
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'superAdmins'), (snap) => {
@@ -31,6 +41,27 @@ export default function SuperAdminSystemPage() {
     }, () => { /* collection may be empty/unreadable pre-functions */ });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    const ref = doc(db, 'platformSettings', 'config');
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() as PlatformSettings | undefined;
+      setPoweredByText(data?.poweredByText || DEFAULT_POWERED_BY);
+    }, () => { /* falls back to the code default */ });
+    return () => unsub();
+  }, []);
+
+  const handleSaveBranding = async () => {
+    setIsSavingBranding(true);
+    try {
+      await setDoc(doc(db, 'platformSettings', 'config'), { poweredByText: poweredByText.trim() || DEFAULT_POWERED_BY }, { merge: true });
+      toast({ title: 'Branding saved', description: 'Every tenant will now show this line on printed documents.' });
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Could not save', description: err instanceof Error ? err.message : 'Save failed.' });
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
 
   const checkFunctions = async () => {
     setFnStatus('checking');
@@ -47,6 +78,30 @@ export default function SuperAdminSystemPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Platform Branding</CardTitle>
+          <CardDescription>
+            Shown below every tenant&apos;s own footer text on printed invoices and receipts, across all tenants.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2 max-w-md">
+            <Label htmlFor="powered-by-text">&quot;Powered by&quot; line</Label>
+            <Input
+              id="powered-by-text"
+              value={poweredByText}
+              onChange={(e) => setPoweredByText(e.target.value)}
+              placeholder={DEFAULT_POWERED_BY}
+            />
+          </div>
+          <Button size="sm" onClick={handleSaveBranding} disabled={isSavingBranding}>
+            {isSavingBranding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSavingBranding ? 'Saving…' : 'Save Branding'}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Cloud Functions</CardTitle>

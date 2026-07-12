@@ -12,8 +12,7 @@ import { Store as StoreIcon } from '@/components/icons';
 import Image from 'next/image';
 import { sendTenantEmail, emailShell, escapeHtml, isSmtpConfigured } from '@/lib/email';
 import { sendTenantSms, sendTenantWhatsapp, sendAndLogMessage } from '@/lib/messaging';
-import { nodeToPdfBase64 } from '@/lib/invoice-pdf';
-import { downloadReceiptDocumentPdf } from '@/lib/native-document-pdf';
+import { nodeToPdfBase64, downloadNodeAsPdf, printNodeAsPdf } from '@/lib/invoice-pdf';
 import { CustomFieldsDisplay } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
@@ -27,7 +26,7 @@ interface InvoiceDetailProps {
 
 const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
     const {
-        companyName, companyAddress, currencySymbol, customersMap, themeSettings,
+        companyName, companyAddress, currencySymbol, customersMap, themeSettings, platformSettings,
         setEmailLogs, setMessageLogs, user, smtpConfigList,
     } = useAppContext();
     const { toast } = useToast();
@@ -36,6 +35,8 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
     const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const printableRef = useRef<HTMLDivElement>(null);
+    const footerText = themeSettings.documentFooter || 'Thank you for your business!';
+    const poweredByText = platformSettings.poweredByText || 'Powered by CZium Tech | www.czium.com';
     const smsEnabled = themeSettings.smsGatewayEnabled === true;
     const whatsappEnabled = themeSettings.whatsappGatewayEnabled === true;
     // Email is hidden until sending is configured. The themeSettings flag is
@@ -52,17 +53,9 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
         document.body.classList.remove('print-only-receipt');
     };
 
-    const handleDownload = async () => {
-        if (!printableRef.current || downloading) return;
-        setDownloading(true);
-        try {
-            await downloadReceiptDocumentPdf(invoice, { companyName, companyAddress, currencySymbol, themeSettings });
-            toast({ title: 'Receipt downloaded', description: `Receipt ${invoice.id} was saved as a PDF.` });
-        } catch (err) {
-            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
-        } finally {
-            setDownloading(false);
-        }
+    const handleDownload = () => {
+        const bodyClasses = embedded ? ['print-only-receipt'] : [];
+        printNodeAsPdf(`Receipt-${invoice.id}`, { bodyClasses });
     };
 
     const Wrapper = embedded ? 'div' : DialogContent;
@@ -117,7 +110,8 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
         receipt += `Tax (${invoice.taxRate}%): +${currencySymbol} ${formatNumber(taxAmount)}\n`;
       }
       receipt += `TOTAL: ${currencySymbol} ${formatNumber(invoice.amount)}\n\n`;
-      receipt += `Thank you for your business!`;
+      receipt += footerText;
+      receipt += `\n${poweredByText}`;
       return receipt;
     }
 
@@ -222,7 +216,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                   <DialogTitle>Invoice Receipt for {invoice.id}</DialogTitle>
                 </DialogHeader>
             )}
-            <div ref={printableRef} className={cn('printable-area receipt force-light-doc bg-white text-black p-4 overflow-y-auto flex-1 min-h-0', isLetterhead && 'relative')}>
+            <div ref={printableRef} className={cn('printable-area receipt force-light-doc bg-white text-black p-4 overflow-y-auto flex-1 min-h-0 flex flex-col', isLetterhead && 'relative')}>
                 {watermarkSrc && (
                     <Image src={watermarkSrc} alt="" aria-hidden width={300} height={300}
                         className="pointer-events-none absolute inset-0 m-auto w-[45%] max-h-[40%] object-contain opacity-[0.05]" />
@@ -233,9 +227,9 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                            right, both centered as a group at the top of the slip. */
                         <div className="flex items-center justify-center gap-3 mb-2">
                             {themeSettings.logoUrl ? (
-                                <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={40} height={40} className="shrink-0" />
+                                <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={56} height={56} className="shrink-0" />
                             ) : (
-                                <StoreIcon className="h-10 w-10 shrink-0" />
+                                <StoreIcon className="h-14 w-14 shrink-0" />
                             )}
                             {letterheadImage ? (
                                 <Image src={letterheadImage} alt={companyName || 'Letterhead'} width={200} height={56} className="h-auto max-h-14 w-auto object-contain" />
@@ -245,9 +239,9 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                         </div>
                     ) : (
                         themeSettings.logoUrl ? (
-                            <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={40} height={40} className="mx-auto mb-2"/>
+                            <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={56} height={56} className="mx-auto mb-2"/>
                         ) : (
-                            <StoreIcon className="mx-auto h-10 w-10 mb-2" />
+                            <StoreIcon className="mx-auto h-14 w-14 mb-2" />
                         )
                     )}
                     {!(isLetterhead && (letterheadImage || letterheadWording)) && <h2 className="text-lg font-bold">{companyName}</h2>}
@@ -355,8 +349,9 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     <span>{currencySymbol} {formatNumber(invoice.amount)}</span>
                 </div>
 
-                <div className="text-center mt-6">
-                    Thank you for your business!
+                <div className="text-center mt-6 pt-2 mt-auto whitespace-pre-wrap" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                    {footerText}
+                    <p className="text-[9px] text-muted-foreground mt-1">{poweredByText}</p>
                 </div>
             </div>
             {/* Single row of equal-width actions — never wraps, so every button

@@ -4,11 +4,26 @@ import React, { createContext, useContext, useEffect, useRef, useCallback, useSt
 import { doc, setDoc, deleteDoc, onSnapshot, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { usePathname } from 'next/navigation';
-import type { PresenceRecord } from '@/types';
+import type { PresenceRecord, Role } from '@/types';
 import { useAppContext } from './AppContext';
 
 const PRESENCE_TTL_MS = 30_000; // 30s — purge stale
 const HEARTBEAT_INTERVAL_MS = 10_000;
+
+// Visibility follows the role hierarchy: admin sees everyone, manager sees
+// cashier/inventory-staff (and other managers), cashier/inventory-staff only
+// see peers at their own level — never manager or admin.
+const VISIBLE_ROLES: Record<Role, Role[]> = {
+  admin: ['admin', 'manager', 'cashier', 'inventory-staff'],
+  manager: ['manager', 'cashier', 'inventory-staff'],
+  cashier: ['cashier', 'inventory-staff'],
+  'inventory-staff': ['cashier', 'inventory-staff'],
+};
+
+function canSeeRole(viewerRole: Role | undefined, targetRole: Role): boolean {
+  if (!viewerRole) return false;
+  return VISIBLE_ROLES[viewerRole].includes(targetRole);
+}
 
 interface PresenceContextType {
   presentUsers: PresenceRecord[];
@@ -34,6 +49,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       userId: user.id,
       userName: user.name,
       userAvatar: user.avatar ?? '',
+      role: user.role,
       route: pathname,
       ...(recordIdRef.current && { recordId: recordIdRef.current }),
       lastSeen: Date.now(),
@@ -86,13 +102,22 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, tenantId]);
 
   const usersOnRoute = useCallback(
-    (route: string) => presentUsers.filter(u => u.route === route && u.userId !== user?.id),
+    (route: string) =>
+      presentUsers.filter(
+        u => u.route === route && u.userId !== user?.id && canSeeRole(user?.role, u.role)
+      ),
     [presentUsers, user]
   );
 
   const usersOnRecord = useCallback(
     (route: string, recordId: string) =>
-      presentUsers.filter(u => u.route === route && u.recordId === recordId && u.userId !== user?.id),
+      presentUsers.filter(
+        u =>
+          u.route === route &&
+          u.recordId === recordId &&
+          u.userId !== user?.id &&
+          canSeeRole(user?.role, u.role)
+      ),
     [presentUsers, user]
   );
 

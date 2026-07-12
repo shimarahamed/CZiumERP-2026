@@ -101,6 +101,9 @@ function POSInner() {
   const [newCustomer, setNewCustomer] = useState<{ name: string; phone: string; email: string; company: string; billingAddress: string }>({ name: '', phone: '', email: '', company: '', billingAddress: '' });
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [stockIssues, setStockIssues] = useState<{ productId: string; name: string; available: number; need: number }[]>([]);
+  const [stockOverride, setStockOverride] = useState(false);
+  const [outOfStockProduct, setOutOfStockProduct] = useState<Product | null>(null);
 
   // Cart sidebar resize (drag handle) — clamped to a sane range, persisted across reloads.
   const [cartWidth, setCartWidth] = useState(() => {
@@ -196,6 +199,14 @@ function POSInner() {
       return [...prev, { key: `l-${p.id}`, productId: p.id, name: p.name, price: p.price, qty: 1, discount: p.discount || undefined, discountType: p.discountType, unit: p.unitOfMeasure || 'Pcs' }];
     });
   };
+  const tryAddToCart = (p: Product) => {
+    const stock = stockOf(p);
+    if (stock !== null && stock <= 0) {
+      setOutOfStockProduct(p);
+      return;
+    }
+    addToCart(p);
+  };
   const setQty = (key: string, qty: number) =>
     setCart(prev => qty <= 0 ? prev.filter(l => l.key !== key) : prev.map(l => l.key === key ? { ...l, qty } : l));
   const removeLine = (key: string) => setCart(prev => prev.filter(l => l.key !== key));
@@ -227,6 +238,7 @@ function POSInner() {
     setNotes(''); setShowNotes(false); setCustomData({}); setSalesperson('');
     setSaveAsCustomer(false); setShowCustomerDetails(false);
     setNewCustomer({ name: '', phone: '', email: '', company: '', billingAddress: '' });
+    setStockIssues([]); setStockOverride(false);
   };
 
   const toggleSaveAsCustomer = (checked: boolean) => {
@@ -269,7 +281,7 @@ function POSInner() {
     }
   };
 
-  const checkout = async () => {
+  const checkout = async (overrideStock = stockOverride) => {
     if (submitting || cart.length === 0) return;
     setSubmitting(true);
     try {
@@ -286,6 +298,7 @@ function POSInner() {
         .filter(inv => inv.postStatus === 'queued')
         .flatMap(inv => inv.items.filter(it => !it.isCustom).map(it => ({ productId: it.productId, quantity: it.quantity })));
       const pendingConsumption = computeStockConsumption(queuedLines, products);
+      const issues: { productId: string; name: string; available: number; need: number }[] = [];
       for (const [pid, need] of consumption) {
         const prod = products.find(p => p.id === pid);
         if (!prod) continue;
@@ -294,10 +307,13 @@ function POSInner() {
         const whStock = saleWarehouse ? stockLevels.find(s => s.id === stockLevelId(pid, saleWarehouse.id))?.stock : undefined;
         const available = Math.max(prod.stock, whStock ?? prod.stock) - (pendingConsumption.get(pid) ?? 0);
         if (available < need) {
-          toast({ variant: 'destructive', title: 'Insufficient stock', description: `${prod.name}: have ${available}, need ${need}.` });
-          setSubmitting(false);
-          return;
+          issues.push({ productId: pid, name: prod.name, available, need });
         }
+      }
+      if (issues.length > 0 && !overrideStock) {
+        setStockIssues(issues);
+        setSubmitting(false);
+        return;
       }
       const savedCustomer = customers.find(c => c.id === customerId);
       const customerFields = savedCustomer
@@ -333,6 +349,7 @@ function POSInner() {
         predictedId,
         postStatus: 'queued',
         invoicePrefix: prefix,
+        ...(overrideStock ? { allowNegativeStock: true } : {}),
         storeId: currentStore?.id,
         ...customerFields,
         userId: user?.id,
@@ -455,13 +472,13 @@ function POSInner() {
                   <div
                     key={p.id}
                     role="button"
-                    tabIndex={out ? -1 : 0}
-                    onClick={() => !out && addToCart(p)}
-                    onKeyDown={(e) => { if (!out && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); addToCart(p); } }}
+                    tabIndex={0}
+                    onClick={() => tryAddToCart(p)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tryAddToCart(p); } }}
                     className={cn(
                       'group relative text-left rounded-2xl border bg-card p-3 shadow-token-sm transition-all cursor-pointer outline-none',
                       'hover:shadow-token-md hover:-translate-y-0.5 hover:border-ring/40 focus-visible:ring-2 focus-visible:ring-ring active:translate-y-0 active:shadow-token-sm',
-                      out && 'opacity-55 cursor-not-allowed hover:translate-y-0 hover:shadow-token-sm',
+                      out && 'border-destructive/30',
                       pinned && 'border-primary/40 ring-1 ring-primary/20'
                     )}
                   >
@@ -654,7 +671,7 @@ function POSInner() {
           <div className="grid grid-cols-2 gap-1.5">
             <div className="relative">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{currencySymbol}</span>
-              <Input value={discountAmtInput} onChange={e => setDiscountAmtInput(e.target.value)} type="number" placeholder="Discount" className="h-8 pl-6 rounded-lg text-xs" />
+              <Input value={discountAmtInput} onChange={e => setDiscountAmtInput(e.target.value)} type="number" placeholder=" Discount" className="h-8 pl-6 rounded-lg text-xs" />
             </div>
             <div className="relative">
               <Percent className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -810,11 +827,90 @@ function POSInner() {
             <Button type="button" variant="outline" onClick={() => setShowConfirm(false)} disabled={submitting}>Cancel</Button>
             <Button
               type="button"
-              onClick={async () => { await checkout(); setShowConfirm(false); }}
+              onClick={async () => { await checkout(); if (stockIssues.length === 0) setShowConfirm(false); }}
               disabled={submitting}
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {submitting ? 'Generating…' : 'Generate Invoice'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Low/out-of-stock items detected on checkout: let the cashier drop those
+          lines from the sale, or override and let stock go negative in Inventory. */}
+      <Dialog open={stockIssues.length > 0} onOpenChange={(open) => !open && setStockIssues([])}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Stock issue detected</DialogTitle>
+            <DialogDescription>
+              The following item{stockIssues.length > 1 ? 's are' : ' is'} low or out of stock. Remove {stockIssues.length > 1 ? 'them' : 'it'} from the sale, or override to continue (inventory will go negative).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border divide-y max-h-56 overflow-y-auto">
+            {stockIssues.map(issue => (
+              <div key={issue.productId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{issue.name}</div>
+                  <div className="text-xs text-destructive">Have {formatQty(issue.available)}, need {formatQty(issue.need)}</div>
+                </div>
+                <Button
+                  type="button" variant="outline" size="sm"
+                  onClick={() => {
+                    removeLine(cart.find(l => l.productId === issue.productId)?.key ?? '');
+                    setStockIssues(prev => prev.filter(i => i.productId !== issue.productId));
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setStockIssues([])}>Cancel</Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={async () => {
+                setStockOverride(true);
+                setStockIssues([]);
+                await checkout(true);
+                setShowConfirm(false);
+              }}
+            >
+              Override &amp; Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tapped an out-of-stock item in the catalogue: ask before adding it,
+          rather than silently blocking the tap or letting it in unannounced. */}
+      <Dialog open={!!outOfStockProduct} onOpenChange={(open) => !open && setOutOfStockProduct(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Out of stock</DialogTitle>
+            <DialogDescription>
+              {outOfStockProduct?.name} has no stock available ({formatQty(outOfStockProduct ? stockOf(outOfStockProduct) ?? 0 : 0)} left). Remove it from consideration, or override and add it — inventory will go negative until restocked.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOutOfStockProduct(null)}>
+              Don&apos;t add
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (outOfStockProduct) {
+                  addToCart(outOfStockProduct);
+                  setStockOverride(true);
+                  toast({ variant: 'destructive', title: `${outOfStockProduct.name} added at negative stock`, description: 'This sale will push inventory below zero until restocked.' });
+                }
+                setOutOfStockProduct(null);
+              }}
+            >
+              Override &amp; Add
             </Button>
           </DialogFooter>
         </DialogContent>

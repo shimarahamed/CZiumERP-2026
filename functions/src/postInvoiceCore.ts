@@ -45,6 +45,10 @@ export type Invoice = {
   postError?: string;
   postedAt?: string;
   invoicePrefix?: string;
+  // Set by the client when the cashier/user explicitly chose to proceed
+  // past a low/zero-stock warning at creation time. Lets stock go negative
+  // instead of throwing at posting time.
+  allowNegativeStock?: boolean;
 };
 
 type ProductDoc = {
@@ -307,7 +311,7 @@ export async function runInvoicePosting(
       const available = warehouse ?
         Math.max(productStock, levelStock ?? productStock) :
         productStock;
-      if (needed > available) {
+      if (needed > available && !invoice.allowNegativeStock) {
         throw new PostingError(
           "failed-precondition",
           `Insufficient stock for ${product?.name ?? productId}. ` +

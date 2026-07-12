@@ -28,7 +28,14 @@
       "Bash(node -e ' *)",
       "Bash(echo \"=== main tsc exit: $? ===\")",
       "Bash(echo \"=== functions tsc exit: $? ===\")",
-      "Read(//c/Users/shima/Downloads/**)"
+      "Read(//c/Users/shima/Downloads/**)",
+      "Bash(firebase functions:log --only triggerTenantBackup -n 30)",
+      "Bash(firebase functions:list)",
+      "Bash(firebase apps:list)",
+      "Bash(firebase functions:config:get)",
+      "Bash(firebase target *)",
+      "Bash(firebase target:apply storage main czium-pos.firebasestorage.app)",
+      "Bash(firebase functions:log --only downloadTenantBackup -n 30)"
     ]
   }
 }

@@ -171,6 +171,8 @@ export default function InvoicesPage() {
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
     const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [stockIssues, setStockIssues] = useState<{ productId: string; name: string; available: number; needed: number }[]>([]);
+    const [pendingSubmitData, setPendingSubmitData] = useState<InvoiceFormData | null>(null);
     const [customData, setCustomData] = useState<Record<string, unknown>>({});
     const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
     const [viewingFullInvoice, setViewingFullInvoice] = useState<Invoice | null>(null);
@@ -477,7 +479,31 @@ export default function InvoicesPage() {
         }
     };
 
-    const submitInvoice = async (data: InvoiceFormData) => {
+    // Called from the stock-issue dialog's "Override & Continue" — resubmits the
+    // same form data, skipping the availability check so stock can go negative.
+    const submitWithStockOverride = async () => {
+        if (!pendingSubmitData) return;
+        const data = pendingSubmitData;
+        setStockIssues([]);
+        setPendingSubmitData(null);
+        setIsSubmitting(true);
+        try {
+            await submitInvoice(data, true);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Called from the stock-issue dialog's "Remove" per item — drops that line
+    // from the form's item list, then re-checks availability with the rest.
+    const removeStockIssueItem = (productId: string) => {
+        const idx = fields.findIndex((f, i) => form.getValues(`items.${i}.productId`) === productId);
+        if (idx > -1) remove(idx);
+        setStockIssues(prev => prev.filter(i => i.productId !== productId));
+        setPendingSubmitData(prev => prev ? { ...prev, items: prev.items.filter(it => it.productId !== productId) } : prev);
+    };
+
+    const submitInvoice = async (data: InvoiceFormData, overrideStock = false) => {
         const existingCustomer = customers.find(c => c.id === data.customerId);
         const isWalkIn = !existingCustomer; // no saved customer selected → walk-in
 
@@ -563,7 +589,7 @@ export default function InvoicesPage() {
         for (const [pid, qty] of prevConsumption) if (!newConsumption.has(pid)) netDelta.set(pid, -(qty));
 
         // Availability check — only for products being consumed MORE than before.
-        let stockSufficient = true;
+        const issues: { productId: string; name: string; available: number; needed: number }[] = [];
         for (const [pid, delta] of netDelta) {
             if (delta <= 0) continue;
             const prod = products.find(p => p.id === pid);
@@ -578,11 +604,14 @@ export default function InvoicesPage() {
                 : undefined;
             const available = Math.max(prod.stock, warehouseStock ?? prod.stock);
             if (available < delta) {
-                stockSufficient = false;
-                toast({ variant: 'destructive', title: 'Insufficient Stock', description: `Not enough stock for ${prod.name}. Available: ${available}, needed: ${delta}.` });
+                issues.push({ productId: pid, name: prod.name, available, needed: delta });
             }
         }
-        if (!stockSufficient) return;
+        if (issues.length > 0 && !overrideStock) {
+            setStockIssues(issues);
+            setPendingSubmitData(data);
+            return;
+        }
 
         const backendFirstPaidInvoice = !invoiceToEdit && data.status === 'paid';
         if (backendFirstPaidInvoice) {
@@ -607,6 +636,7 @@ export default function InvoicesPage() {
                 salesperson: data.salesperson || undefined,
                 attachments,
                 ...(Object.keys(customData).length > 0 ? { customData } : {}),
+                ...(overrideStock ? { allowNegativeStock: true } : {}),
             };
 
             try {
@@ -1430,6 +1460,37 @@ export default function InvoicesPage() {
                             </DialogFooter>
                         </form>
                     </Form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Low/out-of-stock items detected on submit: let the user drop those
+                lines from the invoice, or override and let stock go negative. */}
+            <Dialog open={stockIssues.length > 0} onOpenChange={(open) => { if (!open) { setStockIssues([]); setPendingSubmitData(null); } }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Stock issue detected</DialogTitle>
+                        <DialogDescription>
+                            The following item{stockIssues.length > 1 ? 's are' : ' is'} low or out of stock. Remove {stockIssues.length > 1 ? 'them' : 'it'} from the invoice, or override to continue (inventory will go negative).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-lg border divide-y max-h-56 overflow-y-auto">
+                        {stockIssues.map(issue => (
+                            <div key={issue.productId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                                <div className="min-w-0">
+                                    <div className="truncate font-medium">{issue.name}</div>
+                                    <div className="text-xs text-destructive">Have {issue.available}, need {issue.needed}</div>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => removeStockIssueItem(issue.productId)}>Remove</Button>
+                            </div>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => { setStockIssues([]); setPendingSubmitData(null); }}>Cancel</Button>
+                        <Button type="button" variant="destructive" disabled={isSubmitting} onClick={submitWithStockOverride}>
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Override &amp; Continue
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

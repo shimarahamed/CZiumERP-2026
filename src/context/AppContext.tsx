@@ -3,7 +3,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo , useRef } from 'react';
-import type { Invoice, Customer, Product, ProductCategory, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition } from '@/types';
+import type { Invoice, Customer, Product, ProductCategory, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition, PlatformSettings } from '@/types';
 import { initialInvoices, initialCustomers, initialProducts, initialVendors, initialStores, initialUsers, initialPurchaseOrders, initialRfqs, initialAssets, initialItAssets, initialAttendance, initialLeaveRequests, initialEmployees, initialLedgerEntries, initialTaxRates, initialBudgets, initialCandidates, initialPerformanceReviews, initialBillsOfMaterials, initialProductionOrders, initialQualityChecks, initialLeads, initialCampaigns, initialProjects, initialTasks, initialTickets, initialJobRequisitions, initialShipments, initialVendorBills } from '@/lib/data';
 
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
@@ -199,6 +199,9 @@ interface AppContextType {
   themeSettings: ThemeSettings;
   setThemeSettings: React.Dispatch<React.SetStateAction<ThemeSettings>>;
   saveThemeSettings: (patch: Partial<ThemeSettings>) => Promise<void>;
+  /** Platform-wide (cross-tenant) branding, e.g. the "Powered by" footer line.
+   *  Super-admin-editable only; every tenant reads the same doc. */
+  platformSettings: PlatformSettings;
   isHydrated: boolean;
   isStoreResolving: boolean;
   isDataLoaded: boolean;
@@ -269,6 +272,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [companyAddress, setCompanyAddress] = useState<string>('123 Innovation Drive, Tech City, 12345');
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState<number>(1);
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(defaultThemeSettings);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({});
   const [currencySymbol, setCurrencySymbol] = useState<string>('AED');
   
   // Several collections are read-restricted to admin/manager by firestore.rules
@@ -462,6 +466,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }, () => { /* settings read failure falls back to local cache */ });
     return () => unsub();
   }, [tenantId]);
+
+  // Platform-wide branding — one doc shared by every tenant, super-admin-only
+  // write (see firestore.rules). Requires only an authenticated session, not
+  // a resolved tenantId, so it loads for super admins too.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const ref = doc(db, 'platformSettings', 'config');
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() as PlatformSettings | undefined;
+      if (data) setPlatformSettings(data);
+    }, () => { /* settings read failure falls back to the code default */ });
+    return () => unsub();
+  }, [isAuthenticated]);
 
   // Self-heal: security rules gate reads of most collections on the tenant
   // doc's enabledModules field (moduleEnabled()). If that field is missing,
@@ -936,7 +953,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       companyName, setCompanyName,
       companyAddress, setCompanyAddress,
       fiscalYearStartMonth, setFiscalYearStartMonth,
-      themeSettings, setThemeSettings, saveThemeSettings,
+      themeSettings, setThemeSettings, saveThemeSettings, platformSettings,
       isHydrated,
       isStoreResolving,
       isDataLoaded: productsLoaded && (!isSalesRole || (invoicesLoaded && customersLoaded)),

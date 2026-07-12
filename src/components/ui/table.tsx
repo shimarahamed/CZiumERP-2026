@@ -65,15 +65,19 @@ interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
   /** Renders rows as stacked cards on phones (<640px). Desktop/tablet unchanged.
    * Set to false for matrix-style tables that must stay tabular everywhere. */
   mobileCards?: boolean
+  /** Class for the wrapping div (default adds horizontal scroll). Pass
+   * "overflow-visible" for documents where the page itself should scroll,
+   * not a boxed region around just the table. */
+  wrapperClassName?: string
 }
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, mobileCards = true, children, ...props }, ref) => {
+  ({ className, mobileCards = true, wrapperClassName, children, ...props }, ref) => {
     const content = mobileCards
       ? labelBodyCells(children, getHeaderLabels(children))
       : children
     return (
-      <div className="relative w-full overflow-auto">
+      <div className={cn("relative w-full overflow-auto", wrapperClassName)}>
         <table
           ref={ref}
           className={cn(

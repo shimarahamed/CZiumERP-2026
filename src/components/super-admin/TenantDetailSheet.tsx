@@ -14,7 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
+import { Loader2 } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
+import { TenantBackupPanel } from '@/components/backup/TenantBackupPanel';
 import type { Tenant, User, Role, IndustryTemplate } from '@/types';
 
 const ROLES: Role[] = ['admin', 'manager', 'cashier', 'inventory-staff'];
@@ -27,6 +33,120 @@ const BUSINESS_COLLECTIONS = [
 type TenantUser = User & { id: string };
 
 type SuperAdminListCollectionResult = { docs: Record<string, unknown>[] };
+
+const RESET_SCOPE_INFO = [
+  {
+    scope: 'invoices',
+    label: 'Invoices',
+    description: 'Deletes all invoices, their ledger entries, and stock movement history (stock levels, lots, serial units, report rollups). Resets invoice numbering to 001.',
+  },
+  {
+    scope: 'purchaseOrders',
+    label: 'Purchase Orders',
+    description: 'Deletes all purchase orders, RFQs, and vendor bills. Resets purchase order numbering to 001.',
+  },
+  {
+    scope: 'refunds',
+    label: 'Refunds',
+    description: 'Deletes all refunds. Resets refund numbering to 001.',
+  },
+  {
+    scope: 'products',
+    label: 'Products',
+    description: 'Deletes all products and product categories.',
+  },
+  {
+    scope: 'customers',
+    label: 'Customers',
+    description: 'Deletes all customers.',
+  },
+  {
+    scope: 'vendors',
+    label: 'Vendors',
+    description: 'Deletes all vendors.',
+  },
+] as const;
+
+function ResetScopeButton({ tenantId, scope, label, description }: {
+  tenantId: string;
+  scope: string;
+  label: string;
+  description: string;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async () => {
+    if (confirmText !== tenantId) return;
+    setResetting(true);
+    try {
+      const call = httpsCallable(getFunctions(app), 'resetTenantData');
+      await call({ tenantId, scope, confirm: confirmText });
+      toast({ title: `${label} reset`, description: `All ${label.toLowerCase()} data was cleared for this tenant.` });
+      setOpen(false);
+      setConfirmText('');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: `Could not reset ${label.toLowerCase()}`, description: err?.message ?? 'Cloud Functions may not be deployed yet.' });
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+      <div className="pr-4">
+        <Label className="text-base">{label}</Label>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setConfirmText(''); }}>
+        <DialogTrigger asChild>
+          <Button variant="destructive" size="sm" className="shrink-0">Reset {label}</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset {label}?</DialogTitle>
+            <DialogDescription>
+              {description} This only affects tenant <span className="font-mono">{tenantId}</span> and cannot be undone. Type the tenant ID to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={tenantId}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={resetting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleReset} disabled={resetting || confirmText !== tenantId}>
+              {resetting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {resetting ? 'Resetting…' : `Permanently reset ${label}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ResetTenantDataCard({ tenantId }: { tenantId: string }) {
+  return (
+    <Card className="border-destructive/50">
+      <CardHeader>
+        <CardTitle className="text-destructive">Danger Zone</CardTitle>
+        <CardDescription>
+          Permanently clear specific parts of this tenant&apos;s data. Users and tenant settings/configuration are never affected. Each action is independent and cannot be undone.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {RESET_SCOPE_INFO.map(({ scope, label, description }) => (
+          <ResetScopeButton key={scope} tenantId={tenantId} scope={scope} label={label} description={description} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function TenantDetailSheet({
   tenant,
@@ -178,9 +298,9 @@ export function TenantDetailSheet({
         <SheetHeader>
           <SheetTitle>{tenant.name}</SheetTitle>
           <SheetDescription>
-            <span className="font-mono">{tenant.id}</span> · <span className="capitalize">{tenant.blueprintId ?? tenant.industry ?? '—'}</span> ·{' '}
-            <Badge variant={tenant.status === 'active' ? 'default' : 'destructive'}>{tenant.status}</Badge>
+            <span className="font-mono">{tenant.id}</span> · <span className="capitalize">{tenant.blueprintId ?? tenant.industry ?? '—'}</span>
           </SheetDescription>
+          <Badge variant={tenant.status === 'active' ? 'default' : 'destructive'} className="w-fit">{tenant.status}</Badge>
         </SheetHeader>
 
         <div className="mt-4 space-y-2 text-sm text-muted-foreground">
@@ -195,6 +315,8 @@ export function TenantDetailSheet({
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="data">Business data</TabsTrigger>
+            <TabsTrigger value="backups">Backups</TabsTrigger>
+            <TabsTrigger value="danger">Danger Zone</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="space-y-4">
@@ -324,6 +446,14 @@ export function TenantDetailSheet({
                 </TableBody>
               </Table>
             </div>
+          </TabsContent>
+
+          <TabsContent value="backups" className="space-y-3">
+            <TenantBackupPanel tenantId={tenant.id} />
+          </TabsContent>
+
+          <TabsContent value="danger" className="space-y-3">
+            <ResetTenantDataCard tenantId={tenant.id} />
           </TabsContent>
         </Tabs>
       </SheetContent>

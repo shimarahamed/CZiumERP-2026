@@ -97,6 +97,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Platform-wide branding (e.g. the "Powered by" footer line shown on every
+    // tenant's printed documents). Readable by anyone signed in — every tenant
+    // app needs it — writable only by super admins.
+    match /platformSettings/{id} {
+      allow read: if signedIn();
+      allow write: if isSuperAdmin();
+    }
+
     // ---------------- Tenant tree ----------------
 
     match /tenants/{tenantId} {
@@ -426,6 +434,12 @@ service cloud.firestore {
       }
       match /auditTrail/{id} {
         allow read: if (isManager(tenantId) && tenantActive(tenantId)) || isSuperAdmin();
+        allow write: if false; // server-written only (Cloud Function)
+      }
+      match /backups/{id} {
+        // Live log for the Settings/super-admin backup panels — the actual
+        // backup/restore/upload/download work happens in tenantBackup.ts.
+        allow read: if isTenantAdmin(tenantId) || isSuperAdmin();
         allow write: if false; // server-written only (Cloud Function)
       }
     }

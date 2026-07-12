@@ -587,6 +587,12 @@ export type Invoice = {
   postedAt?: string;
   /** Tenant invoice prefix captured at queue time, consumed by the trigger. */
   invoicePrefix?: string;
+  /**
+   * Set when the user explicitly chose to proceed past a low/zero-stock
+   * warning at creation time. Lets the server posting transaction allow
+   * stock to go negative instead of rejecting the invoice.
+   */
+  allowNegativeStock?: boolean;
 };
 
 export type RecurringInvoice = {
@@ -764,6 +770,14 @@ export type LoyaltySettings = {
  *  wordings on the left, compact company details on the right, with a large
  *  low-opacity logo watermark behind the page body. */
 export type DocumentTemplate = 'classic' | 'modern' | 'lined' | 'thermal-receipt' | 'letterhead';
+
+/** Platform-wide (cross-tenant) config, stored at platformSettings/config.
+ *  Editable only by super admins; applies to every tenant's printed documents. */
+export type PlatformSettings = {
+    /** Line shown below every tenant's own document footer, e.g.
+     *  "Powered by CZium Tech | www.czium.com". */
+    poweredByText?: string;
+};
 
 export type ThemeSettings = {
     appName: string;
@@ -1171,6 +1185,7 @@ export type PresenceRecord = {
   userId: string;
   userName: string;
   userAvatar: string;
+  role: Role;
   route: string;        // e.g. "/purchase-orders"
   recordId?: string;    // e.g. "PO-001" when viewing a specific record
   lastSeen: number;     // epoch ms

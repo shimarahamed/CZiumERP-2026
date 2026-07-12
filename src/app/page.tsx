@@ -6,9 +6,9 @@ import { usePageTitle } from '@/hooks/use-page-title';
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Legend } from "recharts";
+import { Area, AreaChart as ReAreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis, Legend, Pie, PieChart, Cell } from "recharts";
 import Header from "@/components/Header";
-import { DollarSign, Users, CreditCard, TrendingUp, PlusCircle, AlertCircle, AlertTriangle, Trophy, ShoppingBag, AreaChart, Hourglass, FileText, Settings } from "@/components/icons";
+import { DollarSign, Users, CreditCard, TrendingUp, PlusCircle, AlertCircle, AlertTriangle, Trophy, ShoppingBag, AreaChart, Hourglass, FileText, Settings, Clock } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useAppContext } from "@/context/AppContext";
@@ -183,6 +183,15 @@ export default function DashboardPage() {
       .slice(0, 5);
   }, [paidInvoices]);
 
+  const recentInvoices = useMemo(() =>
+    [...storeInvoices]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 6),
+    [storeInvoices]);
+
+  const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9'];
+  const topProductsPie = useMemo(() => topProducts.map((p, i) => ({ ...p, fill: PIE_COLORS[i % PIE_COLORS.length] })), [topProducts]);
+
   const canCreatePo = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'inventory-staff';
   const kpiSubtitle = currentStore?.id === 'all' ? "Across all stores" : "For this store's paid invoices";
 
@@ -218,22 +227,121 @@ export default function DashboardPage() {
     }
   };
 
+  const kpiCard = (title: string, value: string, subtitle: string, Icon: any, tint: string) => (
+    <Card className="border shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <div className={`h-8 w-8 rounded-lg ${tint} flex items-center justify-center`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-semibold tracking-tight">{value}</div>
+        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+      </CardContent>
+    </Card>
+  );
+
   const dashboardWidgets = [
-    { id: 'totalRevenue', title: 'Total Revenue', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Revenue</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalRevenue)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
-    { id: 'totalProfit', title: 'Total Profit', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Profit</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalProfit)}</div><p className="text-xs text-muted-foreground">{formatNumber(profitMargin, 1, 1)}% profit margin</p></CardContent></Card>)},
-    { id: 'avgSaleValue', title: 'Average Sale Value', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Average Sale Value</CardTitle><AreaChart className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(averageSaleValue)}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
-    { id: 'totalSales', title: 'Total Sales', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Sales</CardTitle><CreditCard className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">+{paidInvoices.length}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
-    { id: 'itemsSold', title: 'Items Sold', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Items Sold</CardTitle><ShoppingBag className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{totalItemsSold}</div><p className="text-xs text-muted-foreground">{kpiSubtitle}</p></CardContent></Card>)},
-    { id: 'activeCustomers', title: 'Active Customers', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Active Customers</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">+{activeCustomers}</div><p className="text-xs text-muted-foreground">Customers with paid invoices</p></CardContent></Card>)},
-    { id: 'pendingPayments', title: 'Pending Payments', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Pending Payments</CardTitle><Hourglass className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{currencySymbol} {formatNumber(totalPendingAmount)}</div><p className="text-xs text-muted-foreground">From {pendingInvoices.length} invoices</p></CardContent></Card>)},
-    ...(topPerformingStore ? [{ id: 'topStore', title: 'Top Performing Store', Component: () => (<Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Top Performing Store</CardTitle><Trophy className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold truncate">{topPerformingStore.name}</div><p className="text-xs text-muted-foreground">{currencySymbol} {formatNumber(topPerformingStore.revenue)} in revenue</p></CardContent></Card>)}] : []),
-    { id: 'salesOverview', title: 'Sales Overview Chart', Component: () => (<Card className="lg:col-span-4"><CardHeader><CardTitle>Overview</CardTitle></CardHeader><CardContent className="pl-2"><ChartContainer config={chartConfig} className="h-[300px] w-full"><BarChart data={salesData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }} onClick={handleBarClick}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} /><YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => `${currencySymbol} ${value / 1000}k`} /><ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} /><Legend content={<ChartLegendContent />} /><Bar dataKey="revenue" fill="var(--color-revenue)" radius={4} className="cursor-pointer"/></BarChart></ChartContainer></CardContent></Card>)},
-    { id: 'dashboardInsights', title: 'Dashboard Insights', Component: () => (<Card className="lg:col-span-3"><CardHeader><CardTitle>Dashboard Insights</CardTitle><p className="text-sm text-muted-foreground">Key metrics and alerts for your business.</p></CardHeader><CardContent><div className="space-y-4 max-h-[250px] overflow-y-auto">{topProducts.length > 0 && (<div><h4 className="font-semibold mb-2 flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500"/>Top Selling Products</h4><div className="space-y-2 text-sm">{topProducts.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span><span className="font-medium text-muted-foreground">{item.quantity} sold</span></div>))}</div></div>)}{(topProducts.length > 0 && (lowStockItems.length > 0 || expiringItems.length > 0)) && (<div className="border-t border-dashed my-4"></div>)}{lowStockItems.length === 0 && expiringItems.length === 0 && topProducts.length === 0 ? (<div className="flex items-center justify-center h-full"><p className="text-sm text-muted-foreground text-center py-8">No insights or alerts at the moment.</p></div>) : (<>{lowStockItems.length > 0 && (<div><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertCircle className="h-4 w-4 text-destructive"/>Low Stock Items</h4><div className="space-y-2 text-sm">{lowStockItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span><div className="flex items-center gap-2"><span className="font-medium text-destructive">{item.stock} left</span>{canCreatePo && item.vendorId && (<Button asChild variant="outline" size="sm" className="h-7"><Link href={`/purchase-orders?action=new&productId=${item.id}&vendorId=${item.vendorId}`}>Reorder</Link></Button>)}</div></div>))}</div></div>)}{expiringItems.length > 0 && (<div className="pt-2"><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-yellow-500"/>Expiring Soon</h4><div className="space-y-2 text-sm">{expiringItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span>{item.expiryDate && <span className="font-medium">{format(parseISO(item.expiryDate), 'MMM d, yyyy')}</span>}</div>))}</div></div>)}</>)}</div></CardContent></Card>)},
+    { id: 'totalRevenue', title: 'Total Revenue', Component: () => kpiCard('Total Revenue', `${currencySymbol} ${formatNumber(totalRevenue)}`, kpiSubtitle, DollarSign, 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400') },
+    { id: 'totalProfit', title: 'Total Profit', Component: () => kpiCard('Total Profit', `${currencySymbol} ${formatNumber(totalProfit)}`, `${formatNumber(profitMargin, 1, 1)}% profit margin`, TrendingUp, 'bg-violet-500/10 text-violet-600 dark:text-violet-400') },
+    { id: 'avgSaleValue', title: 'Average Sale Value', Component: () => kpiCard('Average Sale Value', `${currencySymbol} ${formatNumber(averageSaleValue)}`, kpiSubtitle, AreaChart, 'bg-sky-500/10 text-sky-600 dark:text-sky-400') },
+    { id: 'totalSales', title: 'Total Sales', Component: () => kpiCard('Total Sales', `+${paidInvoices.length}`, kpiSubtitle, CreditCard, 'bg-amber-500/10 text-amber-600 dark:text-amber-400') },
+    { id: 'itemsSold', title: 'Items Sold', Component: () => kpiCard('Items Sold', `${totalItemsSold}`, kpiSubtitle, ShoppingBag, 'bg-rose-500/10 text-rose-600 dark:text-rose-400') },
+    { id: 'activeCustomers', title: 'Active Customers', Component: () => kpiCard('Active Customers', `+${activeCustomers}`, 'Customers with paid invoices', Users, 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400') },
+    { id: 'pendingPayments', title: 'Pending Payments', Component: () => kpiCard('Pending Payments', `${currencySymbol} ${formatNumber(totalPendingAmount)}`, `From ${pendingInvoices.length} invoices`, Hourglass, 'bg-orange-500/10 text-orange-600 dark:text-orange-400') },
+    ...(topPerformingStore ? [{ id: 'topStore', title: 'Top Performing Store', Component: () => kpiCard('Top Performing Store', topPerformingStore.name, `${currencySymbol} ${formatNumber(topPerformingStore.revenue)} in revenue`, Trophy, 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400') }] : []),
+    { id: 'salesOverview', title: 'Sales Overview Chart', Component: () => (
+      <Card className="lg:col-span-4 border shadow-none">
+        <CardHeader>
+          <CardTitle>Revenue Overview</CardTitle>
+          <p className="text-sm text-muted-foreground">Last 6 months — click a point to drill down</p>
+        </CardHeader>
+        <CardContent className="pl-2">
+          <ChartContainer config={chartConfig} className="h-[300px] w-full">
+            <ReAreaChart data={salesData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }} onClick={handleBarClick}>
+              <defs>
+                <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => `${currencySymbol} ${value / 1000}k`} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+              <Legend content={<ChartLegendContent />} />
+              <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#revenueFill)" className="cursor-pointer" activeDot={{ r: 4 }} />
+            </ReAreaChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+    )},
+    { id: 'topProductsChart', title: 'Top Products Chart', Component: () => (
+      <Card className="lg:col-span-3 border shadow-none">
+        <CardHeader>
+          <CardTitle>Top Selling Products</CardTitle>
+          <p className="text-sm text-muted-foreground">By quantity sold</p>
+        </CardHeader>
+        <CardContent>
+          {topProductsPie.length === 0 ? (
+            <div className="flex items-center justify-center h-[220px]"><p className="text-sm text-muted-foreground">No sales data yet.</p></div>
+          ) : (
+            <ChartContainer config={chartConfig} className="h-[220px] w-full">
+              <PieChart>
+                <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="name" />} />
+                <Pie data={topProductsPie} dataKey="quantity" nameKey="name" innerRadius={45} outerRadius={80} paddingAngle={3}>
+                  {topProductsPie.map((entry, i) => <Cell key={entry.id} fill={entry.fill} />)}
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+          )}
+          <div className="space-y-1.5 mt-2">
+            {topProductsPie.map(item => (
+              <div key={item.id} className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: item.fill }} />{item.name}</span>
+                <span className="font-medium text-muted-foreground">{item.quantity} sold</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )},
+    { id: 'dashboardInsights', title: 'Dashboard Insights', Component: () => (<Card className="lg:col-span-4 border shadow-none"><CardHeader><CardTitle>Dashboard Insights</CardTitle><p className="text-sm text-muted-foreground">Key metrics and alerts for your business.</p></CardHeader><CardContent><div className="space-y-4 max-h-[250px] overflow-y-auto">{lowStockItems.length === 0 && expiringItems.length === 0 ? (<div className="flex items-center justify-center h-full"><p className="text-sm text-muted-foreground text-center py-8">No alerts at the moment.</p></div>) : (<>{lowStockItems.length > 0 && (<div><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertCircle className="h-4 w-4 text-destructive"/>Low Stock Items</h4><div className="space-y-2 text-sm">{lowStockItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span><div className="flex items-center gap-2"><span className="font-medium text-destructive">{item.stock} left</span>{canCreatePo && item.vendorId && (<Button asChild variant="outline" size="sm" className="h-7"><Link href={`/purchase-orders?action=new&productId=${item.id}&vendorId=${item.vendorId}`}>Reorder</Link></Button>)}</div></div>))}</div></div>)}{expiringItems.length > 0 && (<div className="pt-2"><h4 className="font-semibold mb-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-yellow-500"/>Expiring Soon</h4><div className="space-y-2 text-sm">{expiringItems.map(item => (<div key={item.id} className="flex justify-between items-center"><span>{item.name}</span>{item.expiryDate && <span className="font-medium">{format(parseISO(item.expiryDate), 'MMM d, yyyy')}</span>}</div>))}</div></div>)}</>)}</div></CardContent></Card>)},
+    { id: 'recentActivity', title: 'Recent Activity', Component: () => (
+      <Card className="lg:col-span-3 border shadow-none">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" />Recent Activity</CardTitle>
+          <p className="text-sm text-muted-foreground">Latest invoices recorded</p>
+        </CardHeader>
+        <CardContent>
+          {recentInvoices.length === 0 ? (
+            <div className="flex items-center justify-center h-[150px]"><p className="text-sm text-muted-foreground">No invoices yet.</p></div>
+          ) : (
+            <div className="space-y-3 max-h-[250px] overflow-y-auto">
+              {recentInvoices.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between text-sm border-b border-dashed pb-2 last:border-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{inv.customerName || inv.id}</p>
+                    <p className="text-xs text-muted-foreground">{format(parseISO(inv.date), 'MMM d, yyyy')}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={statusVariant[inv.status]} className="capitalize">{inv.status.replace('-', ' ')}</Badge>
+                    <span className="font-semibold">{currencySymbol} {formatNumber(inv.amount)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )},
   ];
 
+  const MAIN_WIDGET_IDS = ['salesOverview', 'topProductsChart', 'dashboardInsights', 'recentActivity'];
   const visibleWidgets = dashboardWidgets.filter(w => !hiddenWidgets.includes(w.id));
-  const kpiWidgets = visibleWidgets.filter(w => !['salesOverview', 'dashboardInsights'].includes(w.id));
-  const mainWidgets = visibleWidgets.filter(w => ['salesOverview', 'dashboardInsights'].includes(w.id));
+  const kpiWidgets = visibleWidgets.filter(w => !MAIN_WIDGET_IDS.includes(w.id));
+  const mainWidgets = visibleWidgets.filter(w => MAIN_WIDGET_IDS.includes(w.id));
 
   return (
     <div className="flex flex-col h-full">
@@ -255,7 +363,7 @@ export default function DashboardPage() {
           </Link>
         </Button>
       </Header>
-      <main className="flex-1 overflow-auto p-4 md:p-6">
+      <main className="flex-1 overflow-auto p-4 md:p-6 bg-muted/20">
         {!isDataLoaded ? (
           <>
             <CardSkeleton count={4} />

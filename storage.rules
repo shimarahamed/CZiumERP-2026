@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// All tenant backup files are written and read exclusively by Cloud
+// Functions using the Admin SDK (see functions/src/tenantBackup.ts), which
+// bypasses these rules entirely and enforces tenant-admin/super-admin auth
+// itself. No client ever reads or writes Storage directly.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

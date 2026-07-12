@@ -6,6 +6,10 @@ type PdfOptions = {
   kind?: PdfDocumentKind;
 };
 
+// 80mm thermal-receipt width in CSS px (96 dpi), matching the physical paper
+// width used everywhere else a receipt is rendered — print, on-screen, PDF.
+const RECEIPT_WIDTH_PX = 302; // 80mm * 96 / 25.4, rounded
+
 /** Capture the complete document, including content hidden by an on-screen scroll area. */
 async function captureDocument(node: HTMLElement, kind: PdfDocumentKind) {
   const { default: html2canvas } = await import('html2canvas');
@@ -19,14 +23,17 @@ async function captureDocument(node: HTMLElement, kind: PdfDocumentKind) {
       scale: 4,
       useCORS: true,
       backgroundColor: '#ffffff',
-      windowWidth: 1024,
+      windowWidth: kind === 'receipt' ? RECEIPT_WIDTH_PX : 794,
       onclone: clonedDocument => {
         const clonedNode = clonedDocument.querySelector<HTMLElement>(`[data-pdf-capture="${marker}"]`);
         if (!clonedNode) return;
         // Match the dimensions and document rules used by the print stylesheet,
         // rather than inheriting the narrower on-screen dialog/card dimensions.
+        // Non-receipt width (794px = A4 width at 96dpi) fills the printed page
+        // edge-to-edge instead of leaving the disproportionate margin a narrower
+        // capture produces once scaled up to A4 size.
         clonedNode.style.boxSizing = 'border-box';
-        clonedNode.style.width = kind === 'receipt' ? '280px' : '680px';
+        clonedNode.style.width = kind === 'receipt' ? `${RECEIPT_WIDTH_PX}px` : '794px';
         clonedNode.style.height = 'auto';
         clonedNode.style.maxHeight = 'none';
         clonedNode.style.minHeight = '0';
@@ -52,9 +59,10 @@ async function nodeToPdf(node: HTMLElement, { kind = 'invoice' }: PdfOptions = {
   ]);
 
   if (kind === 'receipt') {
-    // 80 mm thermal-paper width. Its height follows the receipt so it remains one page.
+    // 80 mm thermal-paper width — the standard size, same as print/on-screen.
+    // Its height follows the receipt so it remains one page.
     const pageWidth = 80 * 2.834645669;
-    const margin = 10;
+    const margin = 6;
     const contentWidth = pageWidth - margin * 2;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
     const pageHeight = Math.max(160, contentHeight + margin * 2);
@@ -66,12 +74,15 @@ async function nodeToPdf(node: HTMLElement, { kind = 'invoice' }: PdfOptions = {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  // Match the 15 mm margins from the browser print stylesheet.
-  const margin = 42.52;
+  // Compact margin so saved content fills the page like the on-screen/print
+  // version instead of the disproportionate whitespace a full 15mm margin
+  // produces once a narrower capture is scaled up to A4 size.
+  const margin = 24;
   const contentWidth = pageWidth - margin * 2;
   const contentHeight = pageHeight - margin * 2;
   const pixelsPerPoint = canvas.width / contentWidth;
   const sliceHeight = Math.max(1, Math.floor(contentHeight * pixelsPerPoint));
+  const pageCount = Math.max(1, Math.ceil(canvas.height / sliceHeight));
 
   for (let sourceY = 0, page = 0; sourceY < canvas.height; sourceY += sliceHeight, page += 1) {
     const currentSliceHeight = Math.min(sliceHeight, canvas.height - sourceY);
@@ -87,6 +98,13 @@ async function nodeToPdf(node: HTMLElement, { kind = 'invoice' }: PdfOptions = {
     if (page > 0) pdf.addPage();
     const renderedHeight = currentSliceHeight / pixelsPerPoint;
     pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, contentWidth, renderedHeight);
+
+    // Real page numbers, unlike native browser print — this loop knows the
+    // true page count up front, so "Page N of M" can be drawn directly onto
+    // each PDF page instead of relying on unsupported CSS print counters.
+    pdf.setFontSize(8);
+    pdf.setTextColor(102, 102, 102);
+    pdf.text(`Page ${page + 1} of ${pageCount}`, pageWidth - margin, pageHeight - margin / 2, { align: 'right' });
   }
 
   return pdf;
@@ -101,4 +119,35 @@ export async function nodeToPdfBase64(node: HTMLElement, filename: string, optio
 export async function downloadNodeAsPdf(node: HTMLElement, filename: string, options?: PdfOptions): Promise<void> {
   const pdf = await nodeToPdf(node, options);
   pdf.save(filename);
+}
+
+type PrintDownloadOptions = {
+  /** Extra classes toggled on <body> for the duration of the print (e.g. to scope which printable-area shows). */
+  bodyClasses?: string[];
+};
+
+/**
+ * Downloads via the browser's own print pipeline ("Save as PDF" in the print
+ * dialog) instead of the html2canvas/jsPDF raster path — same rendering engine
+ * as the on-screen/print preview, so spacing and page breaks always match.
+ * Temporarily renames the document so the save dialog's suggested filename
+ * carries the invoice/receipt number instead of the page's normal title.
+ */
+export function printNodeAsPdf(filenameStem: string, { bodyClasses = [] }: PrintDownloadOptions = {}): void {
+  const previousTitle = document.title;
+  document.title = filenameStem;
+  document.body.classList.add('printing-invoice', ...bodyClasses);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    document.title = previousTitle;
+    document.body.classList.remove('printing-invoice', ...bodyClasses);
+    window.removeEventListener('afterprint', cleanup);
+  };
+  // afterprint doesn't fire consistently across browsers for "Save as PDF",
+  // so fall back to a delayed cleanup if it never does.
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  setTimeout(cleanup, 2000);
 }

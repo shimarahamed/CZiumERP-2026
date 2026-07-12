@@ -33,3 +33,11 @@ export {
   superAdminListTenantUsers,
   superAdminSetUserPassword,
 } from "./superAdminUsers";
+export {resetTenantData} from "./resetTenantData";
+export {
+  runScheduledBackups,
+  triggerTenantBackup,
+  downloadTenantBackup,
+  uploadTenantBackup,
+  restoreTenantBackup,
+} from "./tenantBackup";

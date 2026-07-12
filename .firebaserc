@@ -3,6 +3,14 @@
     "prod": "czium-pos",
     "default": "czium-pos"
   },
-  "targets": {},
+  "targets": {
+    "czium-pos": {
+      "storage": {
+        "main": [
+          "czium-pos.firebasestorage.app"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

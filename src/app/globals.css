@@ -119,8 +119,16 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 15mm;
+    margin: 15mm 15mm 22mm 15mm;
   }
+
+  /* Page numbers are intentionally NOT rendered for browser print (window.print()).
+     Chrome supports neither the CSS Paged Media @bottom-right margin-box syntax
+     nor counter(pages)/counter(page) outside of it — there is no CSS or JS API
+     that exposes "which physical page is this" or "how many pages total" during
+     native print pagination, so any attempt here silently renders "Page 0".
+     Real page numbers ARE shown in the PDF export (src/lib/invoice-pdf.ts),
+     which paginates the canvas in JS and knows the true page count. */
 
   /* When printing an invoice/receipt: hide ALL direct body children with display:none
      so they take up zero layout space and the browser doesn't paginate over them. */
@@ -207,12 +215,35 @@
     border-radius: 0 !important;
   }
 
-  /* The actual content — let it flow naturally on the page */
+  /* The actual content — let it flow naturally on the page. */
   body.printing-invoice .printable-area {
     display: block !important;
     width: 100% !important;
     background: white !important;
     overflow: visible !important;
+  }
+
+  /* A4 invoice/PO only (not the receipt/thermal slip). The flex/mt-auto/
+     min-height trick doesn't reliably pin content to the bottom of a printed
+     PAGE (min-height only guarantees the element's own box height, and
+     browsers don't stretch static in-flow content to fill unused space on a
+     physical page) — so instead the footer is fixed to the @page box itself,
+     which every print engine positions relative to the physical page, not
+     the document's flow. This also means multi-page documents (11+ rows)
+     get the footer repeated at the bottom of every page automatically. */
+  body.printing-invoice .printable-area.a4-doc {
+    display: block !important;
+    position: relative !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding-bottom: 39mm !important; /* clear the fixed footer (15mm gap + its own height) */
+  }
+  body.printing-invoice .printable-area.a4-doc > footer {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 15mm !important; /* gap above the @page bottom margin, not flush against it */
+    margin-top: 0 !important;
   }
 
   /* Preserve colors for invoice templates while ensuring print-friendly output */

@@ -13,6 +13,7 @@ import FinancialRegionalSettings from '@/components/settings/FinancialRegionalSe
 import LoyaltySettings from '@/components/settings/LoyaltySettings';
 import ModulesSettings from '@/components/settings/ModulesSettings';
 import DataPrivacySettings from '@/components/settings/DataPrivacySettings';
+import BackupSettings from '@/components/settings/BackupSettings';
 import DeveloperSettings from '@/components/settings/DeveloperSettings';
 import EmailNotificationsSettings from '@/components/settings/EmailNotificationsSettings';
 import SmsWhatsappSettings from '@/components/settings/SmsWhatsappSettings';
@@ -69,6 +70,7 @@ const groups: SettingsGroup[] = [
         icon: PlugZap,
         tabs: [
             { value: 'data-privacy', label: 'Data & Privacy', content: <DataPrivacySettings /> },
+            { value: 'backups', label: 'Backups', content: <BackupSettings /> },
             {
                 value: 'api-webhooks', label: 'API & Webhooks', content: (
                     <Card>

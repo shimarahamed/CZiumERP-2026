@@ -15,8 +15,7 @@ import Image from 'next/image';
 import { addMoney, mulMoney, percentOf, formatNumber, lineTotal, invoiceDiscountAmount } from '@/lib/money';
 import { sendTenantEmail, emailShell, escapeHtml, isSmtpConfigured } from '@/lib/email';
 import { sendTenantSms, sendTenantWhatsapp, sendAndLogMessage } from '@/lib/messaging';
-import { nodeToPdfBase64 } from '@/lib/invoice-pdf';
-import { downloadInvoiceDocumentPdf } from '@/lib/native-document-pdf';
+import { nodeToPdfBase64, printNodeAsPdf } from '@/lib/invoice-pdf';
 import { CustomFieldsDisplay, useCustomFields } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
@@ -53,14 +52,13 @@ function LinedCustomFields({ invoice }: { invoice: Invoice }) {
 
 const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
     const {
-        currencySymbol, customersMap, companyName, companyAddress, themeSettings,
+        currencySymbol, customersMap, companyName, companyAddress, themeSettings, platformSettings,
         setEmailLogs, setMessageLogs, user, smtpConfigList,
     } = useAppContext();
     const { toast } = useToast();
     const [sending, setSending] = useState(false);
     const [sendingSms, setSendingSms] = useState(false);
     const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
-    const [downloading, setDownloading] = useState(false);
     const printableRef = useRef<HTMLDivElement>(null);
     const smsEnabled = themeSettings.smsGatewayEnabled === true;
     const whatsappEnabled = themeSettings.whatsappGatewayEnabled === true;
@@ -82,17 +80,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
         document.body.classList.remove('print-only-invoice');
     };
 
-    const handleDownload = async () => {
-        if (!printableRef.current || downloading) return;
-        setDownloading(true);
-        try {
-            await downloadInvoiceDocumentPdf(invoice, { companyName, companyAddress, currencySymbol, themeSettings });
-            toast({ title: 'Invoice downloaded', description: `Invoice ${invoice.id} was saved as a PDF.` });
-        } catch (err) {
-            toast({ variant: 'destructive', title: 'Could not download PDF', description: err instanceof Error ? err.message : 'Download failed.' });
-        } finally {
-            setDownloading(false);
-        }
+    const handleDownload = () => {
+        const bodyClasses = embedded ? ['print-only-invoice'] : [];
+        printNodeAsPdf(`Invoice-${invoice.id}`, { bodyClasses });
     };
 
     const Wrapper = embedded ? 'div' : DialogContent;
@@ -140,6 +130,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
     const template = savedTemplate === 'minimal' ? 'lined' : (savedTemplate ?? 'classic');
     const showLogo = themeSettings.showLogoOnDocuments !== false;
     const footerText = themeSettings.documentFooter || 'Thank you for your business!';
+    const poweredByText = platformSettings.poweredByText || 'Powered by CZium Tech | www.czium.com';
     const accent = themeSettings.documentAccent || '#1f2937';
     // Item table header + grand total fill: the tenant's brand primary color
     // (stored as a raw HSL triplet, e.g. "231 48% 48%"), not the document accent.
@@ -339,10 +330,11 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   <div className="flex justify-between font-bold text-sm mt-1"><span>TOTAL</span><span>{currencySymbol}{formatNumber(invoice.amount)}</span></div>
                 </div>
                 <p className="text-center whitespace-pre-wrap">{footerText}</p>
+                <p className="text-center text-[9px] text-muted-foreground mt-1">{poweredByText}</p>
               </div>
             ) : template === 'lined' ? (
               /* ---- A4 invoice: lined — outer box + ruled inner boxes, fully gridded table ---- */
-              <div ref={printableRef} className={cn('printable-area force-light-doc bg-white text-black p-4 sm:p-6 overflow-y-auto flex-1 min-h-0')}>
+              <div ref={printableRef} className={cn('printable-area a4-doc force-light-doc bg-white text-black p-4 sm:p-6 overflow-y-auto flex-1 min-h-0 flex flex-col')}>
                 <div className="border border-gray-400">
                   {/* Header box: logo/company left, INVOICE + meta right, ruled divider between */}
                   <div className="flex flex-col sm:flex-row border-b border-gray-400">
@@ -445,13 +437,14 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   </div>
                 </div>
 
-                <footer className="mt-4 text-center text-sm text-muted-foreground" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                <footer className="mt-4 pt-4 text-center text-sm text-muted-foreground mt-auto" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                     <p className="whitespace-pre-wrap">{footerText}</p>
+                    <p className="text-xs mt-1">{poweredByText}</p>
                 </footer>
               </div>
             ) : (
               /* ---- A4 invoice: classic / modern / letterhead ---- */
-              <div ref={printableRef} className={cn('printable-area force-light-doc bg-white text-black overflow-y-auto flex-1 min-h-0', template === 'letterhead' ? 'relative p-4 sm:p-6' : 'p-4 sm:p-8')}>
+              <div ref={printableRef} className={cn('printable-area a4-doc force-light-doc bg-white text-black overflow-y-auto flex-1 min-h-0 flex flex-col', template === 'letterhead' ? 'relative p-4 sm:p-6' : 'p-4 sm:p-8')}>
                 {template === 'letterhead' && watermarkSrc && (
                   /* Watermark: centred logo behind the page, positioned ~3/4 down the
                      first page. `absolute` (not `fixed`) so it stays anchored to this
@@ -607,9 +600,11 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </section>
                 )}
 
-                {/* Compact rows (tight padding, smaller text) so an A4 page fits more items */}
-                <section className="overflow-x-auto">
-                    <Table className="text-sm">
+                {/* Compact rows (tight padding, smaller text) so an A4 page fits more items.
+                    Not wrapped in its own scroll region — only the outer document/dialog
+                    scrolls; the table renders at full height like the rest of the page. */}
+                <section>
+                    <Table className="text-sm" wrapperClassName="overflow-visible">
                         <TableHeader>
                             {/* Header row filled solid with the brand primary color, white text */}
                             <TableRow className="hover:bg-transparent" style={{ backgroundColor: brandColor }}>
@@ -661,8 +656,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </div>
                 </section>
 
-                <footer className={cn('text-center text-sm text-muted-foreground', template === 'letterhead' ? 'mt-8' : 'mt-16')} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                <footer className={cn('text-center text-sm text-muted-foreground mt-auto', template === 'letterhead' ? 'pt-8' : 'pt-16')} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                     <p className="whitespace-pre-wrap">{footerText}</p>
+                    <p className="text-xs mt-1">{poweredByText}</p>
                 </footer>
               </div>
             )}
@@ -687,9 +683,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                         <span className="truncate">{sendingSms ? 'Sending…' : 'SMS'}</span>
                     </Button>
                 )}
-                <Button onClick={handleDownload} variant="outline" className="flex-1 min-w-0 px-2" disabled={downloading}>
-                    {downloading ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Download className="mr-1.5 h-4 w-4 shrink-0" />}
-                    <span className="truncate">{downloading ? 'Saving…' : 'Save PDF'}</span>
+                <Button onClick={handleDownload} variant="outline" className="flex-1 min-w-0 px-2">
+                    <Download className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="truncate">Save PDF</span>
                 </Button>
                 <Button onClick={handlePrint} variant="outline" className="flex-1 min-w-0 px-2">
                     <Printer className="mr-1.5 h-4 w-4 shrink-0" />

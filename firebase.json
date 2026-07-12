@@ -3,6 +3,12 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "storage": [
+    {
+      "target": "main",
+      "rules": "storage.rules"
+    }
+  ],
   "functions": [
     {
       "source": "functions",
