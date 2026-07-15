@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useToast } from '@/hooks/use-toast';
 import { useAppContext } from '@/context/AppContext';
 import { useRequireRole } from '@/hooks/use-require-role';
-import { PlusCircle, Trash2, Pencil } from '@/components/icons';
+import { PlusCircle, Trash2, Pencil, ChevronUp, ChevronDown } from '@/components/icons';
 import type { CustomFieldDefinition, CustomFieldEntity, CustomFieldType } from '@/types';
 import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
 import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
@@ -108,6 +108,19 @@ function CustomFieldsPageInner() {
     toast({ title: 'Field added', description: `${trimmed} on ${entity}` });
     setLabel(''); setRequired(false); setOptionsText(''); setFieldType('text');
     setLinkSourceKey('__none__'); setLinkOffset('');
+  };
+
+  const moveField = (def: CustomFieldDefinition, direction: 'up' | 'down') => {
+    const index = forEntity.findIndex(d => d.id === def.id);
+    const swapWith = direction === 'up' ? forEntity[index - 1] : forEntity[index + 1];
+    if (!swapWith) return;
+    const defOrder = def.order ?? index + 1;
+    const swapOrder = swapWith.order ?? index + (direction === 'up' ? 0 : 2);
+    setCustomFieldDefinitions(prev => prev.map(d => {
+      if (d.id === def.id) return { ...d, order: swapOrder };
+      if (d.id === swapWith.id) return { ...d, order: defOrder };
+      return d;
+    }));
   };
 
   const removeField = (def: CustomFieldDefinition) => {
@@ -265,9 +278,23 @@ function CustomFieldsPageInner() {
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {forEntity.map(f => (
+                  {forEntity.map((f, i) => (
                     <TableRow key={f.id}>
-                      <TableCell className="font-medium">{f.label}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-1">
+                          <div className="flex flex-col -my-1">
+                            <Button
+                              size="icon" variant="ghost" className="h-5 w-5"
+                              onClick={() => moveField(f, 'up')} disabled={i === 0}
+                            ><ChevronUp className="w-3.5 h-3.5" /></Button>
+                            <Button
+                              size="icon" variant="ghost" className="h-5 w-5"
+                              onClick={() => moveField(f, 'down')} disabled={i === forEntity.length - 1}
+                            ><ChevronDown className="w-3.5 h-3.5" /></Button>
+                          </div>
+                          <span>{f.label}</span>
+                        </div>
+                      </TableCell>
                       {isVisible('key') && <TableCell className="font-mono text-xs">{f.key}</TableCell>}
                       {isVisible('type') && <TableCell className="capitalize">{f.fieldType}{f.options ? ` (${f.options.length})` : ''}</TableCell>}
                       {isVisible('required') && <TableCell>{f.required ? 'Yes' : 'No'}</TableCell>}

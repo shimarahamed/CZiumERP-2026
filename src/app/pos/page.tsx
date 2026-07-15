@@ -22,7 +22,7 @@ import Link from 'next/link';
 import {
   Search, Package, Plus, Minus, ShoppingCart, Percent,
   CreditCard, Sparkles, TrendingUp, X, PlusCircle, Banknote, Star,
-  ClipboardCheck, FileText, UserPlus, Loader2,
+  ClipboardCheck, FileText, UserPlus, Loader2, Pencil,
 } from '@/components/icons';
 import { Textarea } from '@/components/ui/textarea';
 import { getDefaultWarehouse, stockLevelId } from '@/lib/warehouse';
@@ -140,7 +140,7 @@ function POSInner() {
     const q = search.trim().toLowerCase();
     const list = sellable.filter(p =>
       (category === 'all' || p.category === category) &&
-      (!q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q))
+      (!q || p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q) || (p.barcode ?? '').toLowerCase().includes(q))
     );
     // Pinned items float to the front, in the admin-defined order.
     const rank = (id: string) => { const i = pinnedIds.indexOf(id); return i === -1 ? Number.MAX_SAFE_INTEGER : i; };
@@ -207,9 +207,32 @@ function POSInner() {
     }
     addToCart(p);
   };
+  // Barcode-scanner support: a scanner types the full code near-instantly then
+  // sends Enter. On an exact barcode match we add it straight to the cart and
+  // clear the box, so scanning never requires the cashier to touch the mouse.
+  useEffect(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return;
+    const match = sellable.find(p => (p.barcode ?? '').toLowerCase() === q);
+    if (match) {
+      tryAddToCart(match);
+      setSearch('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, sellable]);
+
   const setQty = (key: string, qty: number) =>
     setCart(prev => qty <= 0 ? prev.filter(l => l.key !== key) : prev.map(l => l.key === key ? { ...l, qty } : l));
+  const setPrice = (key: string, price: number) =>
+    setCart(prev => prev.map(l => l.key === key ? { ...l, price } : l));
   const removeLine = (key: string) => setCart(prev => prev.filter(l => l.key !== key));
+  const [editingPriceLine, setEditingPriceLine] = useState<{ key: string; value: string } | null>(null);
+  const commitPriceEdit = () => {
+    if (!editingPriceLine) return;
+    const price = Number(editingPriceLine.value);
+    if (Number.isFinite(price) && price >= 0) setPrice(editingPriceLine.key, price);
+    setEditingPriceLine(null);
+  };
   const addCustomLine = () => {
     const price = Number(customPrice);
     if (!customName.trim() || !Number.isFinite(price) || price <= 0) {
@@ -439,7 +462,7 @@ function POSInner() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products by name or SKU…" className="pl-9 h-11 rounded-xl" />
+            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, SKU, or scan barcode…" className="pl-9 h-11 rounded-xl" />
           </div>
           <Combobox
             options={categories.map(c => ({ label: c === 'all' ? 'All items' : c, value: c }))}
@@ -605,14 +628,36 @@ function POSInner() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{l.name}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {currencySymbol} {formatNumber(l.price)}{l.unit && <span className="ml-0.5">/{l.unit}</span>}
-                  {(l.discount ?? 0) > 0 && (
-                    <span className="ml-1 font-medium text-primary">
-                      −{l.discountType === 'amount' ? `${currencySymbol}${formatNumber(l.discount!)}` : `${l.discount}%`}
-                    </span>
-                  )}
-                </p>
+                {editingPriceLine?.key === l.key ? (
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[11px] text-muted-foreground">{currencySymbol}</span>
+                    <Input
+                      autoFocus
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={editingPriceLine.value}
+                      onChange={e => setEditingPriceLine({ key: l.key, value: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') commitPriceEdit(); if (e.key === 'Escape') setEditingPriceLine(null); }}
+                      onBlur={commitPriceEdit}
+                      className="h-6 w-20 rounded-md text-xs px-1.5"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditingPriceLine({ key: l.key, value: String(l.price) })}
+                    className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 group"
+                  >
+                    {currencySymbol} {formatNumber(l.price)}{l.unit && <span className="ml-0.5">/{l.unit}</span>}
+                    {(l.discount ?? 0) > 0 && (
+                      <span className="ml-1 font-medium text-primary">
+                        −{l.discountType === 'amount' ? `${currencySymbol}${formatNumber(l.discount!)}` : `${l.discount}%`}
+                      </span>
+                    )}
+                    <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setQty(l.key, l.qty - 1)} className="h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"><Minus className="h-3 w-3" /></button>

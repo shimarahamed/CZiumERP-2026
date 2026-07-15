@@ -35,7 +35,7 @@ import { Combobox } from '@/components/ui/combobox';
 import ProductDetail from '@/components/ProductDetail';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, CreditCard, List } from '@/components/icons';
+import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, CreditCard, List, ChevronUp, ChevronDown, ArrowUpDown } from '@/components/icons';
 import { PRODUCT_ICONS, resolveIconName } from '@/lib/product-icon';
 import { formatNumber, discountedUnitPrice } from '@/lib/money';
 import { cn } from '@/lib/utils';
@@ -48,7 +48,8 @@ const INVENTORY_COLUMNS: ColumnDef[] = [
   { id: 'type', label: 'Type' },
   { id: 'stock', label: 'Stock' },
   { id: 'status', label: 'Status' },
-  { id: 'price', label: 'Price' },
+  { id: 'price', label: 'MRP' },
+  { id: 'finalPrice', label: 'Final Price' },
 ];
 
 const serviceLinkSchema = z.object({
@@ -62,7 +63,7 @@ const productSchema = z.object({
   price: z.coerce.number().positive("Price must be a positive number."),
   cost: z.coerce.number().min(0, "Cost must be a non-negative number."),
   discount: z.coerce.number().min(0, "Discount cannot be negative.").optional(),
-  discountType: z.enum(['percent', 'amount']).default('percent'),
+  discountType: z.enum(['percent', 'amount']).default('amount'),
   stock: z.coerce.number().int().min(0, "Stock cannot be negative."),
   sku: z.string().optional(),
   category: z.string().optional(),
@@ -119,6 +120,20 @@ export default function InventoryPage() {
     const PAGE_SIZE = 20;
     const columnVisibility = useColumnVisibility('inventory', INVENTORY_COLUMNS);
     const { isVisible, columns: orderedColumns } = columnVisibility;
+    const SORTABLE_COLUMNS = new Set(['name', 'sku', 'stock', 'price', 'finalPrice']);
+    const [sortColumn, setSortColumn] = useState<string>('name');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+    const handleSort = (columnId: string) => {
+        if (!SORTABLE_COLUMNS.has(columnId)) return;
+        if (sortColumn === columnId) {
+            setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortColumn(columnId);
+            setSortDirection('asc');
+        }
+        setCurrentPage(1);
+    };
 
     const form = useForm<ProductFormData>({
         resolver: zodResolver(productSchema),
@@ -128,7 +143,7 @@ export default function InventoryPage() {
             price: 0,
             cost: 0,
             discount: 0,
-            discountType: 'percent',
+            discountType: 'amount',
             stock: 0,
             sku: '',
             category: '',
@@ -215,16 +230,35 @@ export default function InventoryPage() {
     };
 
     const filteredProducts = useMemo(() => {
-        const sortedProducts = [...products].sort((a, b) => a.name.localeCompare(b.name));
-        if (!debouncedSearch) return sortedProducts;
         const lowercasedFilter = debouncedSearch.toLowerCase();
-        return sortedProducts.filter(product =>
+        const matched = !debouncedSearch ? [...products] : products.filter(product =>
             product.name.toLowerCase().includes(lowercasedFilter) ||
             (product.sku && product.sku.toLowerCase().includes(lowercasedFilter)) ||
             (product.category && product.category.toLowerCase().includes(lowercasedFilter)) ||
             (product.productType && product.productType.toLowerCase().includes(lowercasedFilter))
         );
-    }, [products, debouncedSearch]);
+
+        const dir = sortDirection === 'asc' ? 1 : -1;
+        matched.sort((a, b) => {
+            switch (sortColumn) {
+                case 'sku':
+                    return dir * (a.sku ?? '').localeCompare(b.sku ?? '');
+                case 'stock':
+                    return dir * ((a.stock ?? 0) - (b.stock ?? 0));
+                case 'price':
+                    return dir * (a.price - b.price);
+                case 'finalPrice':
+                    return dir * (
+                        discountedUnitPrice(a.price, a.discount ?? 0, a.discountType ?? 'percent') -
+                        discountedUnitPrice(b.price, b.discount ?? 0, b.discountType ?? 'percent')
+                    );
+                case 'name':
+                default:
+                    return dir * a.name.localeCompare(b.name);
+            }
+        });
+        return matched;
+    }, [products, debouncedSearch, sortColumn, sortDirection]);
 
     const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
     const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -280,7 +314,7 @@ export default function InventoryPage() {
               serviceLinks: product.serviceLinks ?? [],
             });
         } else {
-            form.reset({ name: '', kind: 'product', price: 0, cost: 0, discount: 0, discountType: 'percent', stock: 0, sku: '', category: '', description: '', unitOfMeasure: 'Pcs', barcode: '', brand: '', vendorId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
+            form.reset({ name: '', kind: 'product', price: 0, cost: 0, discount: 0, discountType: 'amount', stock: 0, sku: '', category: '', description: '', unitOfMeasure: 'Pcs', barcode: '', brand: '', vendorId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
         }
         setIsFormOpen(true);
     };
@@ -479,7 +513,14 @@ export default function InventoryPage() {
 
     return (
         <div className="flex flex-col h-full">
-            <Header title="Inventory" />
+            <Header title="Inventory">
+                <Button asChild variant="outline" size="sm" className="gap-1">
+                    <Link href="/pos">
+                        <CreditCard className="h-4 w-4" />
+                        Point of Sale
+                    </Link>
+                </Button>
+            </Header>
             <main className="flex-1 overflow-auto p-4 md:p-6">
                 <Card>
                     <CardHeader>
@@ -511,12 +552,6 @@ export default function InventoryPage() {
                                         Categories
                                     </Button>
                                 )}
-                                <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
-                                    <Link href="/pos">
-                                        <CreditCard className="h-4 w-4" />
-                                        Point of Sale
-                                    </Link>
-                                </Button>
                                 {canManage && (
                                     <Button asChild variant="outline" size="sm" className="gap-1 w-full sm:w-auto">
                                         <Link href="/settings/import">
@@ -539,8 +574,21 @@ export default function InventoryPage() {
                             <TableHeader>
                                 <TableRow>
                                     {orderedColumns.filter(column => isVisible(column.id)).map(column => (
-                                        <TableHead key={column.id} className={column.id === 'type' || column.id === 'price' ? 'hidden md:table-cell' : undefined}>
-                                            {column.label}
+                                        <TableHead key={column.id} className={column.id === 'type' || column.id === 'price' || column.id === 'finalPrice' ? 'hidden md:table-cell' : undefined}>
+                                            {SORTABLE_COLUMNS.has(column.id) ? (
+                                                <button
+                                                    type="button"
+                                                    className="flex items-center gap-1 hover:text-foreground"
+                                                    onClick={() => handleSort(column.id)}
+                                                >
+                                                    {column.label}
+                                                    {sortColumn === column.id ? (
+                                                        sortDirection === 'asc' ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
+                                                    ) : (
+                                                        <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                                                    )}
+                                                </button>
+                                            ) : column.label}
                                         </TableHead>
                                     ))}
                                     <TableHead><span className="sr-only">Actions</span></TableHead>
@@ -558,7 +606,12 @@ export default function InventoryPage() {
                                                 if (column.id === 'name') return (
                                                     <TableCell key={column.id} className="font-medium">
                                                         <div className="cursor-pointer hover:underline" onClick={() => setProductToView(product)}>{product.name}</div>
-                                                        <div className="text-sm text-muted-foreground md:hidden">{currencySymbol} {formatNumber(product.price)}</div>
+                                                        <div className="text-sm text-muted-foreground md:hidden">
+                                                            {currencySymbol} {formatNumber(discountedUnitPrice(product.price, product.discount ?? 0, product.discountType ?? 'percent'))}
+                                                            {(product.discount ?? 0) > 0 && (
+                                                                <span className="line-through ml-1 opacity-60">{currencySymbol} {formatNumber(product.price)}</span>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                 );
                                                 if (column.id === 'sku') return <TableCell key={column.id}>{product.sku || '—'}</TableCell>;
@@ -572,6 +625,11 @@ export default function InventoryPage() {
                                                     <TableCell key={column.id}><div className="flex flex-wrap gap-1">{statuses.length > 0 ? statuses.map(status => <Badge key={status.text} variant={status.variant} className="whitespace-nowrap">{status.text}</Badge>) : <span className="text-muted-foreground">-</span>}</div></TableCell>
                                                 );
                                                 if (column.id === 'price') return <TableCell key={column.id} className="hidden md:table-cell">{currencySymbol} {formatNumber(product.price)}</TableCell>;
+                                                if (column.id === 'finalPrice') return (
+                                                    <TableCell key={column.id} className="hidden md:table-cell">
+                                                        {currencySymbol} {formatNumber(discountedUnitPrice(product.price, product.discount ?? 0, product.discountType ?? 'percent'))}
+                                                    </TableCell>
+                                                );
                                                 return null;
                                             })}
                                             <TableCell>
@@ -641,7 +699,7 @@ export default function InventoryPage() {
             </main>
 
             <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>{productToEdit ? 'Edit Product' : 'Add New Product'}</DialogTitle>
                         <DialogDescription>
@@ -649,8 +707,8 @@ export default function InventoryPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto px-2">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto px-2">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <FormField control={form.control} name="name" render={({ field }) => (
                                     <FormItem><FormLabel>{watchedKind === 'service' ? 'Service' : 'Product'} Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
@@ -702,48 +760,44 @@ export default function InventoryPage() {
                             )} />
 
                             {/* POS appearance — image and/or icon shown on Point of Sale cards */}
-                            <div className="space-y-3 rounded-lg border p-3">
-                                <div>
-                                    <Label className="text-sm font-medium">POS appearance</Label>
-                                    <p className="text-xs text-muted-foreground">Shown on Point of Sale cards. Upload a photo, or pick an icon — if neither is set, an icon is guessed from the name.</p>
-                                </div>
+                            <div className="rounded-lg border p-3">
                                 <div className="flex items-start gap-3">
-                                    <div className="relative h-16 w-16 shrink-0 rounded-lg border bg-muted/40 flex items-center justify-center overflow-hidden">
+                                    <div className="relative h-12 w-12 shrink-0 rounded-lg border bg-muted/40 flex items-center justify-center overflow-hidden">
                                         {imageUrl ? (
-                                            <Image src={imageUrl} alt="Product" fill sizes="64px" className="object-cover" unoptimized />
+                                            <Image src={imageUrl} alt="Product" fill sizes="48px" className="object-cover" unoptimized />
                                         ) : (
-                                            (() => { const Ico = PRODUCT_ICONS[resolveIconName(form.watch('name'), iconName)] ?? Package; return <Ico className="h-7 w-7 text-muted-foreground" />; })()
+                                            (() => { const Ico = PRODUCT_ICONS[resolveIconName(form.watch('name'), iconName)] ?? Package; return <Ico className="h-5 w-5 text-muted-foreground" />; })()
                                         )}
                                     </div>
-                                    <div className="flex flex-col gap-2">
-                                        <Input type="file" accept="image/*" onChange={handleImageUpload} className="max-w-xs" />
-                                        {imageUrl && (
-                                            <Button type="button" variant="ghost" size="sm" className="h-7 w-fit px-2 text-muted-foreground" onClick={() => setImageUrl(undefined)}>
-                                                <X className="h-3.5 w-3.5 mr-1" /> Remove image
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <Label className="text-xs text-muted-foreground">Icon (used when no image)</Label>
-                                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                        <button type="button" onClick={() => setIconName(undefined)}
-                                            className={cn('h-9 w-9 rounded-lg border flex items-center justify-center transition-colors', !iconName ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted')}
-                                            title="Auto (guess from name)">
-                                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                                        </button>
-                                        {Object.entries(PRODUCT_ICONS).map(([key, Ico]) => (
-                                            <button key={key} type="button" onClick={() => setIconName(key)}
-                                                className={cn('h-9 w-9 rounded-lg border flex items-center justify-center transition-colors', iconName === key ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted')}
-                                                title={key}>
-                                                <Ico className="h-4 w-4" />
+                                    <div className="flex-1 min-w-0 space-y-1.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <Label className="text-xs text-muted-foreground">POS appearance — photo or icon shown on POS cards</Label>
+                                            {imageUrl && (
+                                                <Button type="button" variant="ghost" size="sm" className="h-6 w-fit px-1.5 text-muted-foreground" onClick={() => setImageUrl(undefined)}>
+                                                    <X className="h-3.5 w-3.5 mr-1" /> Remove
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <Input type="file" accept="image/*" onChange={handleImageUpload} className="h-8 max-w-xs text-xs" />
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button type="button" onClick={() => setIconName(undefined)}
+                                                className={cn('h-7 w-7 rounded-md border flex items-center justify-center transition-colors', !iconName ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted')}
+                                                title="Auto (guess from name)">
+                                                <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
                                             </button>
-                                        ))}
+                                            {Object.entries(PRODUCT_ICONS).map(([key, Ico]) => (
+                                                <button key={key} type="button" onClick={() => setIconName(key)}
+                                                    className={cn('h-7 w-7 rounded-md border flex items-center justify-center transition-colors', iconName === key ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted')}
+                                                    title={key}>
+                                                    <Ico className="h-3.5 w-3.5" />
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <FormField control={form.control} name="sku" render={({ field }) => (
                                     <FormItem><FormLabel>SKU (Stock Keeping Unit)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
@@ -785,29 +839,31 @@ export default function InventoryPage() {
                                 <FormField control={form.control} name="barcode" render={({ field }) => (
                                     <FormItem><FormLabel>Barcode</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <FormField control={form.control} name="brand" render={({ field }) => (
                                     <FormItem><FormLabel>Brand</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
+                                <FormField control={form.control} name="vendorId" render={({ field }) => (
+                                    <FormItem className="flex flex-col"><FormLabel>Default Vendor</FormLabel>
+                                        <FormControl>
+                                            <Combobox
+                                                options={vendorOptions}
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                                placeholder="Select a vendor"
+                                                searchPlaceholder="Search vendors..."
+                                                emptyText="No vendor found."
+                                                className="w-full"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
                             </div>
-                             <FormField control={form.control} name="vendorId" render={({ field }) => (
-                                <FormItem className="flex flex-col"><FormLabel>Default Vendor</FormLabel>
-                                    <FormControl>
-                                        <Combobox
-                                            options={vendorOptions}
-                                            value={field.value}
-                                            onValueChange={field.onChange}
-                                            placeholder="Select a vendor"
-                                            searchPlaceholder="Search vendors..."
-                                            emptyText="No vendor found."
-                                            className="w-full"
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <FormField control={form.control} name="price" render={({ field }) => (
-                                    <FormItem><FormLabel>Price</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel>Maximum Retail Price</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name="cost" render={({ field }) => (
                                     <FormItem><FormLabel>Cost</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
@@ -822,20 +878,17 @@ export default function InventoryPage() {
                                 )}
                             </div>
 
-                            {/* Discount — % of price or a fixed amount off, with live final-price preview */}
-                            <div className="space-y-3 rounded-lg border p-3">
-                                <div>
-                                    <Label className="text-sm font-medium">Discount</Label>
-                                    <p className="text-xs text-muted-foreground">Auto-applied to this item&apos;s line on invoices &amp; receipts.</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Discount — % of MRP or a fixed amount off, with live final-price preview */}
+                            <div className="space-y-2 rounded-lg border p-3">
+                                <Label className="text-sm font-medium">Discount</Label>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <FormField control={form.control} name="discountType" render={({ field }) => (
-                                        <FormItem><FormLabel>Discount Type</FormLabel>
+                                        <FormItem><FormLabel className="text-xs text-muted-foreground">Discount Type</FormLabel>
                                             <Select onValueChange={field.onChange} value={field.value}>
                                                 <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                                                 <SelectContent>
-                                                    <SelectItem value="percent">Percentage (%)</SelectItem>
                                                     <SelectItem value="amount">Fixed amount ({currencySymbol})</SelectItem>
+                                                    <SelectItem value="percent">Percentage (%)</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                             <FormMessage />
@@ -843,13 +896,13 @@ export default function InventoryPage() {
                                     )} />
                                     <FormField control={form.control} name="discount" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>{watchedDiscountType === 'amount' ? `Amount off (${currencySymbol})` : 'Percentage off (%)'}</FormLabel>
+                                            <FormLabel className="text-xs text-muted-foreground">{watchedDiscountType === 'amount' ? `Amount off (${currencySymbol})` : 'Percentage off (%)'}</FormLabel>
                                             <FormControl><Input type="number" step="0.01" min={0} max={watchedDiscountType === 'percent' ? 100 : undefined} {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
                                     <div className="flex flex-col justify-end pb-1">
-                                        <p className="text-sm font-medium text-muted-foreground">Final price</p>
+                                        <p className="text-xs text-muted-foreground">Final price</p>
                                         <p className="text-lg font-semibold">
                                             {currencySymbol} {formatNumber(discountedUnitPrice(Number(watchedPrice) || 0, Number(watchedDiscount) || 0, watchedDiscountType))}
                                         </p>
@@ -895,7 +948,7 @@ export default function InventoryPage() {
                                     ))}
                                 </div>
                             )}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                  <FormField control={form.control} name="reorderThreshold" render={({ field }) => (
                                     <FormItem><FormLabel>Reorder Threshold</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl><FormMessage /></FormItem>
                                 )} />
