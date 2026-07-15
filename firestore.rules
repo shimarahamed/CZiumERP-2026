@@ -141,7 +141,16 @@ service cloud.firestore {
         allow create: if isSuperAdmin()
           || (isTenantAdmin(tenantId) && tenantActive(tenantId))
           || (inTenant(tenantId) && tenantActive(tenantId) && id == request.auth.uid);
-        allow update, delete: if isSuperAdmin()
+        allow update: if isSuperAdmin()
+          || (isTenantAdmin(tenantId) && tenantActive(tenantId))
+          // Any staff member may update their own personal-preference fields
+          // (favourited nav links, per-table column layout, dashboard widget
+          // picks) without admin rights — nothing else on their own doc, so a
+          // non-admin can never touch their own role/permissions/storeId.
+          || (isStaff(tenantId) && tenantActive(tenantId) && id == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+                   ['favoriteNavLinks', 'columnPreferences', 'columnOrderPreferences', 'dashboardSettings']));
+        allow delete: if isSuperAdmin()
           || (isTenantAdmin(tenantId) && tenantActive(tenantId));
       }
 

@@ -697,11 +697,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!profile) return;
     const visibilityChanged = JSON.stringify(profile.columnPreferences ?? {}) !== JSON.stringify(user.columnPreferences ?? {});
     const orderChanged = JSON.stringify(profile.columnOrderPreferences ?? {}) !== JSON.stringify(user.columnOrderPreferences ?? {});
-    if (visibilityChanged || orderChanged) {
+    const favoritesChanged = JSON.stringify(profile.favoriteNavLinks ?? []) !== JSON.stringify(user.favoriteNavLinks ?? []);
+    if (visibilityChanged || orderChanged || favoritesChanged) {
       setUser(current => current ? {
         ...current,
         columnPreferences: profile.columnPreferences,
         columnOrderPreferences: profile.columnOrderPreferences,
+        favoriteNavLinks: profile.favoriteNavLinks,
       } : current);
     }
   }, [users, user]);

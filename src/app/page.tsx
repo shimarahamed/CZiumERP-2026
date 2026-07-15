@@ -337,8 +337,11 @@ export default function DashboardPage() {
     )},
   ];
 
+  const canSeeProfit = user?.role === 'admin' || user?.role === 'manager';
   const MAIN_WIDGET_IDS = ['salesOverview', 'topProductsChart', 'dashboardInsights', 'recentActivity'];
-  const visibleWidgets = dashboardWidgets.filter(w => !hiddenWidgets.includes(w.id));
+  const visibleWidgets = dashboardWidgets
+    .filter(w => !hiddenWidgets.includes(w.id))
+    .filter(w => canSeeProfit || w.id !== 'totalProfit');
   const kpiWidgets = visibleWidgets.filter(w => !MAIN_WIDGET_IDS.includes(w.id));
   const mainWidgets = visibleWidgets.filter(w => MAIN_WIDGET_IDS.includes(w.id));
 
@@ -427,7 +430,7 @@ export default function DashboardPage() {
             <DialogDescription>Select the widgets you want to see on your dashboard.</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-            {dashboardWidgets.map(widget => (
+            {dashboardWidgets.filter(widget => canSeeProfit || widget.id !== 'totalProfit').map(widget => (
               <div key={widget.id} className="flex items-center justify-between p-2 border rounded-md">
                 <Label htmlFor={`widget-${widget.id}`} className="font-medium">{widget.title}</Label>
                 <Switch 

@@ -13,6 +13,7 @@ import {
 , Upload, ArrowLeftRight, LayoutGrid, MessageSquare, CalendarClock } from '@/components/icons';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
+import { useFavoriteNavLinks } from '@/hooks/use-favorite-nav-links';
 import type { Role, Module } from '@/types';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -177,6 +178,8 @@ export default function Nav() {
   const { state, setOpen } = useSidebar();
   const [navSearch, setNavSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { isFavorite, toggleFavorite } = useFavoriteNavLinks();
+  const canFavorite = Boolean(user);
 
   const initialOpenState = categories.reduce((acc, category) => {
       if (category.links.some(link => isActive(link.href, pathname))) {
@@ -236,6 +239,11 @@ export default function Nav() {
     );
   }
 
+  const allVisibleLinks = visibleCategories.flatMap(category => category.links.filter(link => allowedLinks.includes(link.label)));
+  const favoriteLinks = canFavorite
+    ? allVisibleLinks.filter(link => isFavorite(link.href) && (!isSearching || link.label.toLowerCase().includes(searchQuery)))
+    : [];
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Nav search — hidden in icon-only collapsed mode */}
@@ -267,6 +275,50 @@ export default function Nav() {
       </div>
 
       <SidebarMenu className="p-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
+        {favoriteLinks.length > 0 && (
+          <SidebarMenuItem key="__favorites">
+            <SidebarMenuButton
+              onClick={() => toggleCategory('__favorites')}
+              className="font-semibold text-sidebar-foreground/90"
+              tooltip="Favourites"
+            >
+              <Star className="w-5 h-5" />
+              <span>Favourites</span>
+              {!isSearching && (
+                <ChevronDown className={cn(
+                  "ml-auto h-4 w-4 shrink-0 transition-transform duration-200",
+                  (isSearching ? true : openCategories.__favorites) && "rotate-180",
+                  "group-data-[collapsible=icon]:hidden"
+                )} />
+              )}
+            </SidebarMenuButton>
+            <SidebarMenuSub data-state={(isSearching ? true : openCategories.__favorites) ? 'open' : 'closed'}>
+              {favoriteLinks.map(link => (
+                <SidebarMenuSubItem key={link.href}>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={isActive(link.href, pathname)}
+                    className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary group/fav"
+                    onClick={() => setNavSearch('')}
+                  >
+                    <Link href={link.href} className="flex items-center w-full">
+                      <link.icon className="w-4 h-4" />
+                      <span className="flex-1">{link.label}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(link.href); }}
+                        className="opacity-60 hover:opacity-100 transition-opacity shrink-0"
+                        aria-label="Remove from favourites"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-current" />
+                      </button>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+          </SidebarMenuItem>
+        )}
         {filteredCategories.map((category) => {
           const isCategoryOpen = isSearching ? true : openCategories[category.label];
 
@@ -297,9 +349,22 @@ export default function Nav() {
                       className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary"
                       onClick={() => setNavSearch('')}
                     >
-                      <Link href={link.href}>
+                      <Link href={link.href} className="flex items-center w-full group/link">
                         <link.icon className="w-4 h-4" />
-                        <span>{link.label}</span>
+                        <span className="flex-1">{link.label}</span>
+                        {canFavorite && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(link.href); }}
+                            className={cn(
+                              "shrink-0 transition-opacity group-data-[collapsible=icon]:hidden",
+                              isFavorite(link.href) ? "opacity-70 hover:opacity-100" : "opacity-0 group-hover/link:opacity-40 hover:opacity-100"
+                            )}
+                            aria-label={isFavorite(link.href) ? "Remove from favourites" : "Add to favourites"}
+                          >
+                            <Star className={cn("w-3.5 h-3.5", isFavorite(link.href) && "fill-current")} />
+                          </button>
+                        )}
                       </Link>
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>

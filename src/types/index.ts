@@ -19,6 +19,8 @@ export type User = {
   columnPreferences?: Record<string, string[]>;
   /** Per-table ordered column ids. Missing/new columns are appended automatically. */
   columnOrderPreferences?: Record<string, string[]>;
+  /** Hrefs of nav links this user has starred, shown in a "Favourites" section at the top of the sidebar. */
+  favoriteNavLinks?: string[];
   /** Store this user is scoped to. Required for non-admin/manager roles so they
    *  land directly in their store on login instead of being asked to pick one. */
   storeId?: string;
