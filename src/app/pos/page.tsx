@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import {
   Search, Package, Plus, Minus, ShoppingCart, Percent,
-  CreditCard, Sparkles, TrendingUp, X, PlusCircle, Banknote, Star,
+  CreditCard, Sparkles, TrendingUp, X, PlusCircle, Banknote, Star, Wallet,
   ClipboardCheck, FileText, UserPlus, Loader2, Pencil,
 } from '@/components/icons';
 import { Textarea } from '@/components/ui/textarea';

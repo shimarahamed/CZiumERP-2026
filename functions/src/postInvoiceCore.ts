@@ -32,7 +32,7 @@ export type Invoice = {
   discount?: number;
   taxRate?: number;
   currency?: string;
-  paymentMethod?: "cash" | "card";
+  paymentMethod?: string;
   createdAt?: string;
   notes?: string;
   salesperson?: string;

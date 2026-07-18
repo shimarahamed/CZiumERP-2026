@@ -428,7 +428,7 @@ export function toInvoices(rows: ParsedRow[], storeId: string | undefined): Invo
     const status: Invoice['status'] = allowedStatuses.includes(rawStatus as Invoice['status'])
       ? (rawStatus as Invoice['status'])
       : 'paid';
-    const pm = (first.paymentMethod || '').toLowerCase();
+    const pm = (first.paymentMethod || '').trim();
     const date = first.date || new Date().toISOString().slice(0, 10);
     invoices.push({
       id,
@@ -438,7 +438,7 @@ export function toInvoices(rows: ParsedRow[], storeId: string | undefined): Invo
       items,
       amount,
       status,
-      paymentMethod: pm === 'cash' || pm === 'card' ? pm : undefined,
+      paymentMethod: pm || undefined,
       date,
       createdAt: new Date(`${date}T00:00:00`).toISOString(),
       salesperson: first.salesperson || undefined,

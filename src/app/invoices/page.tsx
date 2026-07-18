@@ -97,7 +97,7 @@ const invoiceSchema = z.object({
   walkInEmail: z.string().optional(),
   saveWalkInToCustomers: z.boolean().optional(),
   status: z.enum(['paid', 'pending', 'overdue', 'pending-approval']),
-  paymentMethod: z.enum(['cash', 'card']).optional(),
+  paymentMethod: z.string().optional(),
   currency: z.enum(['USD', 'EUR', 'JPY', 'GBP', 'AED', 'LKR']).optional(),
   date: z.date(),
   items: z.array(invoiceItemSchema),
@@ -215,7 +215,7 @@ export default function InvoicesPage() {
             walkInEmail: '',
             saveWalkInToCustomers: false,
             status: 'pending',
-            paymentMethod: 'cash',
+            paymentMethod: 'Cash',
             currency: undefined,
             date: new Date(),
             items: [{ productId: '', quantity: 1 }],
@@ -295,6 +295,10 @@ export default function InvoicesPage() {
     const watchedDiscount = useWatch({ control: form.control, name: 'discount' }) || 0;
     const watchedDiscountType = useWatch({ control: form.control, name: 'discountType' }) || 'amount';
     const watchedTaxRate = useWatch({ control: form.control, name: 'taxRate' }) || 0;
+    const paymentMethodOptions = useMemo(() => {
+        const configured = themeSettings.paymentMethods;
+        return configured && configured.length > 0 ? configured : ['Cash', 'Card'];
+    }, [themeSettings.paymentMethods]);
     const watchedCustomerId = useWatch({ control: form.control, name: 'customerId' });
     const watchedWalkInName = useWatch({ control: form.control, name: 'walkInName' });
 
@@ -364,7 +368,7 @@ export default function InvoicesPage() {
                     walkInEmail: isWalkIn ? (invoiceToEdit.customerEmail ?? '') : '',
                     saveWalkInToCustomers: false,
                     status: (['paid','pending','overdue'].includes(invoiceToEdit.status) ? invoiceToEdit.status : 'pending') as 'paid' | 'pending' | 'overdue',
-                    paymentMethod: invoiceToEdit.paymentMethod ?? 'cash',
+                    paymentMethod: invoiceToEdit.paymentMethod ?? paymentMethodOptions[0] ?? 'Cash',
                     currency: invoiceToEdit.currency,
                     date: new Date(invoiceToEdit.date),
                     items: invoiceToEdit.items.filter(item => !item.isCustom).map(item => ({ productId: item.productId, quantity: item.quantity, notes: item.notes })),
@@ -387,7 +391,7 @@ export default function InvoicesPage() {
                     walkInEmail: '',
                     saveWalkInToCustomers: false,
                     status: themeSettings.defaultInvoiceStatus ?? 'paid',
-                    paymentMethod: 'cash',
+                    paymentMethod: paymentMethodOptions[0] ?? 'Cash',
                     currency: undefined,
                     date: new Date(),
                     items: [{ productId: '', quantity: 1 }],
@@ -1295,11 +1299,10 @@ export default function InvoicesPage() {
                                 )} />
                                 <FormField control={form.control} name="paymentMethod" render={({ field }) => (
                                     <FormItem className="flex flex-col"><FormLabel className="text-xs text-muted-foreground">Payment</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value ?? 'cash'}>
+                                        <Select onValueChange={field.onChange} value={field.value ?? paymentMethodOptions[0] ?? 'Cash'}>
                                             <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                                             <SelectContent>
-                                                <SelectItem value="cash">Cash</SelectItem>
-                                                <SelectItem value="card">Card</SelectItem>
+                                                {paymentMethodOptions.map(method => <SelectItem key={method} value={method}>{method}</SelectItem>)}
                                             </SelectContent>
                                         </Select><FormMessage />
                                     </FormItem>
@@ -1368,13 +1371,31 @@ export default function InvoicesPage() {
                                     </div>
                                 </div>
                                 <div className="rounded-lg border divide-y">
-                                    {fields.map((field, index) => (
+                                    {fields.map((field, index) => {
+                                        const rowProductId = watchedItems?.[index]?.productId;
+                                        const rowProduct = rowProductId ? products.find(p => p.id === rowProductId) : undefined;
+                                        return (
                                         <div key={field.id} className="p-2 space-y-1.5">
                                             <div className="flex items-center gap-2">
                                                 <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
                                                     <FormItem className="flex-1 min-w-0">
                                                         <FormControl>
-                                                            <Combobox options={productOptions} value={field.value} onValueChange={field.onChange} placeholder="Select a product..." searchPlaceholder="Search products..." emptyText="No products found." />
+                                                            <Combobox
+                                                                options={productOptions}
+                                                                value={field.value}
+                                                                onValueChange={(value) => {
+                                                                    field.onChange(value);
+                                                                    // Auto-advance: picking a product in the last row opens the
+                                                                    // next empty row so a multi-item invoice doesn't need a
+                                                                    // manual "Add product" click between every line.
+                                                                    if (value && index === fields.length - 1) {
+                                                                        append({ productId: '', quantity: 1 });
+                                                                    }
+                                                                }}
+                                                                placeholder="Select a product..."
+                                                                searchPlaceholder="Search products..."
+                                                                emptyText="No products found."
+                                                            />
                                                         </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
@@ -1397,13 +1418,24 @@ export default function InvoicesPage() {
                                                 </Button>
                                                 <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => remove(index)}><Trash2 className="h-4 w-4" /></Button>
                                             </div>
+                                            {rowProduct && (
+                                                <div className="flex items-center gap-1.5 pl-1 text-xs text-muted-foreground">
+                                                    <span>{currencySymbol} {formatNumber(rowProduct.price)}{rowProduct.unitOfMeasure ? `/${rowProduct.unitOfMeasure}` : ''}</span>
+                                                    {(rowProduct.discount ?? 0) > 0 && (
+                                                        <span className="font-medium text-primary">
+                                                            −{rowProduct.discountType === 'amount' ? `${currencySymbol}${formatNumber(rowProduct.discount!)}` : `${rowProduct.discount}%`} discount
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                             {(expandedItemNotes.has(field.id) || watchedItems?.[index]?.notes) && (
                                                 <FormField control={form.control} name={`items.${index}.notes`} render={({ field }) => (
                                                     <FormItem><FormControl><Input placeholder="Add details for this item…" className="h-8 text-xs" {...field} /></FormControl><FormMessage /></FormItem>
                                                 )} />
                                             )}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                     {customLineFields.map((field, index) => (
                                         <div key={field.id} className="flex items-center gap-2 p-2 bg-muted/30">
                                             <FormField control={form.control} name={`customLines.${index}.description`} render={({ field }) => (
