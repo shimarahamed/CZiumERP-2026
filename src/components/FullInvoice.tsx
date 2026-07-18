@@ -147,12 +147,19 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
     // behind it never shows through.
     const brandColorLight = (() => {
       const [h, s] = (themeSettings.primaryColor || '231 48% 48%').split(' ');
-      return `hsl(${h}, ${s}, 95%)`;
+      return `hsl(${h}, ${s}, 88%)`;
     })();
     const companyPhone = themeSettings.companyPhone?.trim();
     const companyWebsite = themeSettings.companyWebsite?.trim();
     const companyEmail = themeSettings.companyEmail?.trim();
     const regNumber = themeSettings.companyRegNumber?.trim();
+    // Bank details are only useful while money is still owed — hide them once
+    // an invoice is fully settled so a paid invoice doesn't invite a second payment.
+    const isPaymentDue = invoice.status === 'pending' || invoice.status === 'overdue' || invoice.status === 'pending-approval';
+    const hasBankDetails = Boolean(
+        themeSettings.bankName || themeSettings.bankAccountNumber || themeSettings.bankIbanSwift
+    );
+    const showBankDetails = isPaymentDue && hasBankDetails;
     // Letterhead template: custom header artwork/wordings replace the company
     // name; the big low-opacity watermark uses the company logo (falling back
     // to the letterhead artwork) unless explicitly switched off.
@@ -324,8 +331,11 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     const net = lineTotal(item.price, item.quantity, item.discount, item.discountType);
                     return (
                       <div key={`item-${i}`} className="py-1 first:pt-0 last:pb-0">
-                        <div className="flex justify-between gap-2">
-                          <span className="truncate">{item.productName} x{qtyWithUnit(item)}</span>
+                        {/* Name on its own line so long product names print in full;
+                            qty × price and the line total on the row beneath. */}
+                        <p className="break-words">{item.productName}</p>
+                        <div className="flex justify-between gap-2 pl-2">
+                          <span>{qtyWithUnit(item)} x {formatNumber(item.price)}</span>
                           <span className="shrink-0">{formatNumber(net)}</span>
                         </div>
                         {(item.discount ?? 0) > 0 && (
@@ -416,9 +426,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                         <th className="border-r border-gray-400/40 p-2 text-left font-semibold text-white">Item</th>
                         <th className="border-r border-gray-400/40 p-2 w-14 text-center font-semibold text-white">Qty</th>
                         <th className="border-r border-gray-400/40 p-2 w-16 text-center font-semibold text-white">Unit</th>
-                        <th className="border-r border-gray-400/40 p-2 w-28 text-right font-semibold whitespace-nowrap text-white">Unit Price ({currencySymbol})</th>
-                        <th className="border-r border-gray-400/40 p-2 w-24 text-right font-semibold text-white">Discount</th>
-                        <th className="p-2 w-28 text-right font-semibold whitespace-nowrap text-white">Total ({currencySymbol})</th>
+                        <th className="border-r border-gray-400/40 p-2 w-24 text-right font-semibold text-white"><span className="whitespace-nowrap">Unit Price</span><span className="block text-[10px] font-normal leading-tight">({currencySymbol})</span></th>
+                        <th className="border-r border-gray-400/40 p-2 w-20 text-right font-semibold text-white">Discount</th>
+                        <th className="p-2 w-24 text-right font-semibold text-white">Total<span className="block text-[10px] font-normal leading-tight">({currencySymbol})</span></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -444,15 +454,28 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   {/* Totals box, ruled off from the table */}
                   <div className="flex justify-end">
                     <div className="w-full sm:w-72 p-4 space-y-2">
-                      <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span><span className="font-medium">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Discount{invoiceDiscountSuffix}:</span><span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span><span className="font-medium">{currencySymbol} {formatNumber(taxAmount)}</span></div>
+                      <div className="flex justify-between gap-2"><span className="text-muted-foreground">Subtotal:</span><span className="font-medium whitespace-nowrap">{currencySymbol} {formatNumber(grossSubtotal)}</span></div>
+                      <div className="flex justify-between gap-2"><span className="text-muted-foreground">Discount{invoiceDiscountSuffix}:</span><span className="font-medium text-destructive whitespace-nowrap shrink-0">-{currencySymbol} {formatNumber(totalDiscount)}</span></div>
+                      <div className="flex justify-between gap-2"><span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span><span className="font-medium whitespace-nowrap">{currencySymbol} {formatNumber(taxAmount)}</span></div>
                       <div className="flex justify-between font-bold text-lg rounded-md px-3 py-2 mt-1">
                         <span>Grand Total:</span>
                         <span>{currencySymbol} {formatNumber(invoice.amount)}</span>
                       </div>
                     </div>
                   </div>
+                  {showBankDetails && (
+                    <div className="flex justify-end mt-2">
+                      <div className="w-full sm:w-72 rounded-md border border-gray-300 p-3 space-y-0.5 text-xs">
+                        <p className="font-semibold mb-1">Payment Details</p>
+                        {invoice.dueDate && <p><span className="text-muted-foreground">Pay by:</span> {formatDateUK(invoice.dueDate)}</p>}
+                        {themeSettings.bankName && <p><span className="text-muted-foreground">Bank:</span> {themeSettings.bankName}</p>}
+                        {themeSettings.bankAccountName && <p><span className="text-muted-foreground">Account Name:</span> {themeSettings.bankAccountName}</p>}
+                        {themeSettings.bankAccountNumber && <p><span className="text-muted-foreground">Account No:</span> {themeSettings.bankAccountNumber}</p>}
+                        {themeSettings.bankIbanSwift && <p><span className="text-muted-foreground">IBAN/SWIFT:</span> {themeSettings.bankIbanSwift}</p>}
+                        {themeSettings.bankBranch && <p><span className="text-muted-foreground">Branch:</span> {themeSettings.bankBranch}</p>}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <footer className="mt-4 pt-4 text-center text-sm text-muted-foreground mt-auto" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
@@ -557,60 +580,74 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   </div>
                 )}
                 {template !== 'modern' && template !== 'letterhead' && (
-                  <header className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
+                  <header className="mb-8">
+                    {/* Left column: logo, then INVOICE + number, then Bill To.
+                        Right column: business details with the invoice meta below. */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                      <div>
                         {showLogo && (themeSettings.logoUrl
-                          ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={72} height={72} className="rounded-lg object-contain" />
-                          : <StoreIcon className="h-8 w-8 text-primary" />)}
-                        <h1 className="text-2xl font-bold">{companyName}</h1>
+                          ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={104} height={104} className="rounded-lg object-contain" />
+                          : <StoreIcon className="h-10 w-10 text-primary" />)}
+                        <h2 className="text-3xl font-bold text-gray-800 mt-3">INVOICE</h2>
+                        <p className="text-muted-foreground"># {invoice.id}</p>
+                        <div className="mt-4">
+                          <h3 className="font-semibold mb-1">Bill To:</h3>
+                          <p>{invoice.customerName || 'Walk-in Customer'}</p>
+                          {(invoice.customerPhone || customer?.phone) && <p className="text-muted-foreground">{invoice.customerPhone || customer?.phone}</p>}
+                          {(invoice.customerEmail || customer?.email) && <p className="text-muted-foreground">{invoice.customerEmail || customer?.email}</p>}
+                        </div>
                       </div>
-                      <p className="text-muted-foreground whitespace-pre-wrap">{companyAddress}</p>
-                      {companyPhone && <p className="text-muted-foreground">{companyPhone}</p>}
-                      {companyEmail && <p className="text-muted-foreground">{companyEmail}</p>}
-                      {companyWebsite && <p className="text-muted-foreground">{companyWebsite}</p>}
-                      {regNumber && <p className="text-muted-foreground">Reg No: {regNumber}</p>}
-                    </div>
-                    <div className="sm:text-right">
-                      <h2 className="text-3xl font-bold text-gray-800">INVOICE</h2>
-                      <p className="text-muted-foreground"># {invoice.id}</p>
-                      <div className="mt-2 text-sm space-y-1 sm:text-right">
-                        <div className="flex sm:justify-end gap-2">
-                            <span className="font-semibold">Invoice Date:</span>
-                            <span>{formatDateUK(invoice.date)}</span>
+                      <div className="sm:text-right">
+                        <h1 className="text-2xl font-bold">{companyName}</h1>
+                        <p className="text-muted-foreground whitespace-pre-wrap">{companyAddress}</p>
+                        {companyPhone && <p className="text-muted-foreground">{companyPhone}</p>}
+                        {companyEmail && <p className="text-muted-foreground">{companyEmail}</p>}
+                        {companyWebsite && <p className="text-muted-foreground">{companyWebsite}</p>}
+                        {regNumber && <p className="text-muted-foreground">Reg No: {regNumber}</p>}
+                        <div className="mt-4 pt-3 border-t text-sm space-y-1">
+                          <div className="flex sm:justify-end gap-2">
+                              <span className="font-semibold">Invoice Date:</span>
+                              <span>{formatDateUK(invoice.date)}</span>
+                          </div>
+                          <div className="flex sm:justify-end gap-2">
+                              <span className="font-semibold">Time:</span>
+                              <span>{formatTimeUK(invoice.createdAt ?? invoice.date)}</span>
+                          </div>
+                          <div className="flex sm:justify-end gap-2">
+                              <span className="font-semibold">Status:</span>
+                              <span className="capitalize font-medium">{invoice.status}</span>
+                          </div>
+                          {invoice.paymentMethod && (
+                              <div className="flex sm:justify-end gap-2">
+                                  <span className="font-semibold">Payment:</span>
+                                  <span className="capitalize font-medium">{invoice.paymentMethod}</span>
+                              </div>
+                          )}
                         </div>
-                        <div className="flex sm:justify-end gap-2">
-                            <span className="font-semibold">Time:</span>
-                            <span>{formatTimeUK(invoice.createdAt ?? invoice.date)}</span>
-                        </div>
-                        <div className="flex sm:justify-end gap-2">
-                            <span className="font-semibold">Status:</span>
-                            <span className="capitalize font-medium">{invoice.status}</span>
-                        </div>
-                        {invoice.paymentMethod && (
-                            <div className="flex sm:justify-end gap-2">
-                                <span className="font-semibold">Payment:</span>
-                                <span className="capitalize font-medium">{invoice.paymentMethod}</span>
-                            </div>
-                        )}
                       </div>
                     </div>
                   </header>
                 )}
 
+                {/* Classic already shows Bill To inside its header, so this shared block
+                    only renders it for modern/letterhead (custom fields still show for all). */}
+                {(template === 'modern' || template === 'letterhead' || (invoice.customData && Object.keys(invoice.customData).length > 0)) && (
                 <section className={cn('flex flex-col sm:flex-row justify-between gap-4', template === 'letterhead' ? 'mb-5 text-sm' : 'mb-8')}>
+                    {(template === 'modern' || template === 'letterhead') ? (
                     <div>
                         <h3 className="font-semibold mb-1">Bill To:</h3>
                         <p>{invoice.customerName || 'Walk-in Customer'}</p>
                         {(invoice.customerPhone || customer?.phone) && <p className="text-muted-foreground">{invoice.customerPhone || customer?.phone}</p>}
                         {(invoice.customerEmail || customer?.email) && <p className="text-muted-foreground">{invoice.customerEmail || customer?.email}</p>}
                     </div>
+                    ) : <div />}
                     {invoice.customData && Object.keys(invoice.customData).length > 0 && (
                         <div className="sm:text-right sm:max-w-xs">
                             <CustomFieldsDisplay entity="invoice" value={invoice.customData} />
                         </div>
                     )}
                 </section>
+                )}
 
                 {invoice.notes && (
                     <section className="mb-8">
@@ -642,16 +679,21 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                                 <TableHead className={cn('h-8 py-1', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Item</TableHead>
                                 <TableHead className={cn('h-8 py-1 text-center', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Qty</TableHead>
                                 <TableHead className={cn('h-8 py-1 text-center', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Unit</TableHead>
-                                <TableHead className={cn('h-8 py-1 text-right whitespace-nowrap', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Unit Price ({currencySymbol})</TableHead>
-                                <TableHead className={cn('h-8 py-1 text-right whitespace-nowrap', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Discount ({currencySymbol})</TableHead>
-                                <TableHead className={cn('h-8 py-1 text-right whitespace-nowrap', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Total ({currencySymbol})</TableHead>
+                                {/* Currency on its own line under the label so "Unit Price (Rs.)"
+                                    doesn't force a wide column. */}
+                                <TableHead className={cn('h-auto py-1 text-right', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}><span className="whitespace-nowrap">Unit Price</span><span className="block text-[10px] font-normal leading-tight">({currencySymbol})</span></TableHead>
+                                <TableHead className={cn('h-auto py-1 text-right', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Discount<span className="block text-[10px] font-normal leading-tight">({currencySymbol})</span></TableHead>
+                                <TableHead className={cn('h-auto py-1 text-right', template === 'letterhead' ? 'text-foreground font-semibold' : 'text-white')}>Total<span className="block text-[10px] font-normal leading-tight">({currencySymbol})</span></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {invoice.items.map((item, index) => (
                                 <TableRow key={`invoice-item-${index}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                                     <TableCell className="py-1.5">{index + 1}</TableCell>
-                                    <TableCell className="py-1.5 font-medium">{item.productName}</TableCell>
+                                    <TableCell className="py-1.5 font-medium">
+                                        {item.productName}
+                                        {item.notes && <div className="text-[11px] font-normal text-muted-foreground mt-0.5">{item.notes}</div>}
+                                    </TableCell>
                                     <TableCell className="py-1.5 text-center">{item.quantity}</TableCell>
                                     <TableCell className="py-1.5 text-center">{item.unit || 'Pcs'}</TableCell>
                                     <TableCell className="py-1.5 text-right">{formatNumber(item.price)}</TableCell>
@@ -663,19 +705,34 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </Table>
                 </section>
 
-                <section className="flex justify-end mt-6" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                    <div className="w-full max-w-xs space-y-2">
-                        <div className="flex justify-between">
+                {/* Payment/bank details sit beside the totals, bottom-aligned so the
+                    box lines up with the Grand Total row. */}
+                <section className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mt-6" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                    {showBankDetails ? (
+                        <div className="w-full max-w-xs rounded-md border p-3 space-y-0.5 text-xs">
+                            <p className="font-semibold mb-1">Payment Details</p>
+                            {invoice.dueDate && <p><span className="text-muted-foreground">Pay by:</span> {formatDateUK(invoice.dueDate)}</p>}
+                            {themeSettings.bankName && <p><span className="text-muted-foreground">Bank:</span> {themeSettings.bankName}</p>}
+                            {themeSettings.bankAccountName && <p><span className="text-muted-foreground">Account Name:</span> {themeSettings.bankAccountName}</p>}
+                            {themeSettings.bankAccountNumber && <p><span className="text-muted-foreground">Account No:</span> {themeSettings.bankAccountNumber}</p>}
+                            {themeSettings.bankIbanSwift && <p><span className="text-muted-foreground">IBAN/SWIFT:</span> {themeSettings.bankIbanSwift}</p>}
+                            {themeSettings.bankBranch && <p><span className="text-muted-foreground">Branch:</span> {themeSettings.bankBranch}</p>}
+                        </div>
+                    ) : <div />}
+                    <div className="w-full max-w-xs space-y-2 sm:ml-auto">
+                        <div className="flex justify-between gap-2">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span className="font-medium">{currencySymbol} {formatNumber(grossSubtotal)}</span>
+                            <span className="font-medium whitespace-nowrap">{currencySymbol} {formatNumber(grossSubtotal)}</span>
                         </div>
-                         <div className="flex justify-between">
+                        {/* Amounts never wrap — a long label like "Discount (incl. Rs. 120.00):"
+                            wraps on its own side and the figures stay right-aligned. */}
+                        <div className="flex justify-between gap-2">
                             <span className="text-muted-foreground">Discount{invoiceDiscountSuffix}:</span>
-                            <span className="font-medium text-destructive">-{currencySymbol} {formatNumber(totalDiscount)}</span>
+                            <span className="font-medium text-destructive whitespace-nowrap shrink-0">-{currencySymbol} {formatNumber(totalDiscount)}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between gap-2">
                             <span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span>
-                            <span className="font-medium">{currencySymbol} {formatNumber(taxAmount)}</span>
+                            <span className="font-medium whitespace-nowrap">{currencySymbol} {formatNumber(taxAmount)}</span>
                         </div>
                         <Separator />
                         {/* Grand total: letterhead keeps a light brand-color tint fill;

@@ -856,6 +856,14 @@ export type ThemeSettings = {
     taxRegistrationNumber?: string;
     /** Business registration number — printed on invoices and receipts as "Reg No". */
     companyRegNumber?: string;
+    /** Bank details shown on invoices below the Grand Total when the invoice has a balance due. */
+    bankName?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    bankIbanSwift?: string;
+    bankBranch?: string;
+    /** Default number of days from the invoice date until payment is due (used to compute Invoice.dueDate). */
+    defaultPaymentDueDays?: number;
     // Financial & regional — same reasoning as companyName above: previously
     // localStorage-only, so it silently reset on a new device/browser/cleared
     // storage. Now rides the tenant settings doc.

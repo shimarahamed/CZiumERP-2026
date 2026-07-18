@@ -68,3 +68,22 @@ export function lineTotal(
   }
   return addMoney(gross, -percentOf(gross, discount));
 }
+
+/**
+ * Invoice-level discount off a subtotal. discountType "percent" (default)
+ * takes a % off the subtotal; "amount" takes a fixed amount off the whole
+ * subtotal, clamped so it never exceeds it. Mirrors src/lib/money.ts.
+ * @param {number} subtotal Decimal dollar subtotal to discount.
+ * @param {number} [discount] Discount value (percent or fixed amount).
+ * @param {"percent" | "amount"} [discountType] Discount kind.
+ * @return {number} The discount amount as a decimal dollar amount.
+ */
+export function invoiceDiscountAmount(
+  subtotal: number,
+  discount = 0,
+  discountType: "percent" | "amount" = "percent",
+): number {
+  if (!(discount > 0)) return 0;
+  if (discountType === "amount") return Math.min(discount, subtotal);
+  return percentOf(subtotal, discount);
+}

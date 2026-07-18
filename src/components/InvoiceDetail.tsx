@@ -308,8 +308,12 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     <div className={cn('border-b my-1', isLetterhead ? 'border-black' : 'border-dashed')}></div>
                     {invoice.items.map((item, index) => (
                          <div key={`detail-item-${index}`} className="my-1">
+                            {/* Name on its own full-width line (no truncation), with the
+                                qty/price/total figures on the row below, still aligned
+                                under the header columns via a flex-1 spacer. */}
+                            <div className="break-words">{item.productName}</div>
                             <div className="flex">
-                                <div className="flex-1 w-0 truncate pr-1">{item.productName}</div>
+                                <div className="flex-1" />
                                 <div className="w-12 shrink-0 text-center">{item.quantity} {item.unit || 'Pcs'}</div>
                                 <div className="w-16 shrink-0 text-right break-words">{formatNumber(item.price)}</div>
                                 <div className="w-16 shrink-0 text-right break-words">{formatNumber(lineTotal(item.price, item.quantity, item.discount, item.discountType))}</div>

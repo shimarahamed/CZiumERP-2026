@@ -639,7 +639,7 @@ export default function InvoicesPage() {
                 currency: data.currency,
                 date: format(data.date, 'yyyy-MM-dd'),
                 createdAt: new Date().toISOString(),
-                dueDate: format(addDays(data.date, 30), 'yyyy-MM-dd'),
+                dueDate: format(addDays(data.date, themeSettings.defaultPaymentDueDays ?? 30), 'yyyy-MM-dd'),
                 items: newInvoiceItems,
                 amount: totalAmount,
                 discount: data.discount,
@@ -830,7 +830,7 @@ export default function InvoicesPage() {
                 currency: data.currency,
                 date: format(data.date, 'yyyy-MM-dd'),
                 createdAt: new Date().toISOString(),
-                dueDate: format(addDays(data.date, 30), 'yyyy-MM-dd'),
+                dueDate: format(addDays(data.date, themeSettings.defaultPaymentDueDays ?? 30), 'yyyy-MM-dd'),
                 items: newInvoiceItems,
                 amount: totalAmount,
                 discount: data.discount,
@@ -982,7 +982,7 @@ export default function InvoicesPage() {
             taxRate: rec.taxRate,
             status: 'pending',
             date: format(new Date(), 'yyyy-MM-dd'),
-            dueDate: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
+            dueDate: format(addDays(new Date(), themeSettings.defaultPaymentDueDays ?? 30), 'yyyy-MM-dd'),
         };
         setInvoices([newInvoice, ...allInvoices]);
         const nextDueDate = advanceByFrequency(rec.nextDueDate, rec.frequency);

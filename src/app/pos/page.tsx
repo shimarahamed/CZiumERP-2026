@@ -394,7 +394,7 @@ function POSInner() {
         status: saleStatus,
         date: format(now, 'yyyy-MM-dd'),
         createdAt: now.toISOString(),
-        dueDate: format(addDays(now, 30), 'yyyy-MM-dd'),
+        dueDate: format(addDays(now, themeSettings.defaultPaymentDueDays ?? 30), 'yyyy-MM-dd'),
         items,
         amount: total,
         discount: Number(discountAmtInput) || 0,

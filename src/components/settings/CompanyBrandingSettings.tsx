@@ -120,6 +120,39 @@ export default function CompanyBrandingSettings() {
                     <Label htmlFor="company-address">Company Address</Label>
                     <Textarea id="company-address" value={local.companyAddress ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, companyAddress: e.target.value }))} />
                 </div>
+                <div className="space-y-4 rounded-lg border p-4">
+                    <div>
+                        <Label className="text-base">Bank Details & Payment Terms</Label>
+                        <p className="text-sm text-muted-foreground">Shown on invoices below the Grand Total whenever an invoice has a balance due (status Pending/Overdue).</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="bank-name">Bank Name</Label>
+                            <Input id="bank-name" value={local.bankName ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, bankName: e.target.value }))} />
+                        </div>
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="bank-account-name">Account Name</Label>
+                            <Input id="bank-account-name" value={local.bankAccountName ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, bankAccountName: e.target.value }))} />
+                        </div>
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="bank-account-number">Account Number</Label>
+                            <Input id="bank-account-number" value={local.bankAccountNumber ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, bankAccountNumber: e.target.value }))} />
+                        </div>
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="bank-iban-swift">IBAN / SWIFT</Label>
+                            <Input id="bank-iban-swift" value={local.bankIbanSwift ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, bankIbanSwift: e.target.value }))} />
+                        </div>
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="bank-branch">Branch</Label>
+                            <Input id="bank-branch" value={local.bankBranch ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, bankBranch: e.target.value }))} />
+                        </div>
+                        <div className="grid w-full items-center gap-2">
+                            <Label htmlFor="payment-due-days">Pay By (days after invoice date)</Label>
+                            <Input id="payment-due-days" type="number" min={0} placeholder="e.g. 30" value={local.defaultPaymentDueDays ?? ''} onChange={(e) => setLocal(prev => ({ ...prev, defaultPaymentDueDays: e.target.value ? Number(e.target.value) : undefined }))} />
+                            <p className="text-xs text-muted-foreground">Used to set a new invoice&apos;s due date automatically.</p>
+                        </div>
+                    </div>
+                </div>
                 <div className="space-y-2">
                     <Label>Company Logo</Label>
                     <div className="flex items-center gap-4">

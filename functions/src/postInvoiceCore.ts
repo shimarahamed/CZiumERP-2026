@@ -1,5 +1,7 @@
 import type {Firestore, DocumentReference} from "firebase-admin/firestore";
-import {addMoney, mulMoney, percentOf, lineTotal} from "./money";
+import {
+  addMoney, mulMoney, percentOf, lineTotal, invoiceDiscountAmount,
+} from "./money";
 import {convertServerSide} from "./fxRates";
 
 type Currency = "USD" | "EUR" | "JPY" | "GBP" | "AED" | "LKR";
@@ -30,6 +32,7 @@ export type Invoice = {
   date: string;
   dueDate?: string;
   discount?: number;
+  discountType?: "percent" | "amount";
   taxRate?: number;
   currency?: string;
   paymentMethod?: string;
@@ -403,8 +406,9 @@ export async function runInvoicePosting(
     const cogsInvoiceCcy = addMoney(
       ...invoice.items.map((item) => mulMoney(item.cost, item.quantity))
     );
-    const discount =
-      invoice.discount ? percentOf(netSubtotal, invoice.discount) : 0;
+    const discount = invoiceDiscountAmount(
+      netSubtotal, invoice.discount, invoice.discountType
+    );
     const taxableInvoiceCcy = addMoney(netSubtotal, -discount);
     const taxInvoiceCcy = invoice.taxRate ?
       percentOf(taxableInvoiceCcy, invoice.taxRate) : 0;
