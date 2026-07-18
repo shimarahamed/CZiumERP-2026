@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +26,8 @@ const PLATFORM_USERS_COLUMNS: ColumnDef[] = [
 export default function SuperAdminUsersPage() {
   const { tenants } = usePlatformData();
   const { users, isLoaded } = usePlatformUsers(tenants);
-  const [search, setSearch] = useState('');
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [tenantFilter, setTenantFilter] = useState<string>('all');
   const columnVisibility = useColumnVisibility('platform-users', PLATFORM_USERS_COLUMNS);
@@ -48,6 +50,11 @@ export default function SuperAdminUsersPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+        <p className="text-sm text-muted-foreground mt-1">Every user profile across all tenants, in one directory.</p>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {ROLES.map(r => (
           <Card key={r}>
@@ -55,7 +62,7 @@ export default function SuperAdminUsersPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground capitalize">{r.replace('-', ' ')}s</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{isLoaded ? roleCounts.get(r) ?? 0 : '—'}</p>
+              <p className="text-3xl font-bold tracking-tight">{isLoaded ? roleCounts.get(r) ?? 0 : '—'}</p>
             </CardContent>
           </Card>
         ))}

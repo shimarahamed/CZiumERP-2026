@@ -26,14 +26,14 @@ import {
 } from '@/components/icons';
 import { Textarea } from '@/components/ui/textarea';
 import { getDefaultWarehouse, stockLevelId } from '@/lib/warehouse';
-import { discountedUnitPrice, formatNumber, lineTotal, invoiceDiscountAmount } from '@/lib/money';
+import { discountedUnitPrice, formatNumber, lineTotal, invoiceDiscountAmount, addMoney, percentOf } from '@/lib/money';
 import { computeStockConsumption } from '@/lib/pos-sale';
 import { iconFor } from '@/lib/product-icon';
 import { cn } from '@/lib/utils';
 import { CustomFieldsFormSection } from '@/components/custom-fields/CustomFields';
 import type { Customer, Invoice, InvoiceItem, Product } from '@/types';
 
-type CartLine = { key: string; productId?: string; name: string; price: number; qty: number; discount?: number; discountType?: 'percent' | 'amount'; unit?: string; isCustom?: boolean };
+type CartLine = { key: string; productId?: string; name: string; price: number; qty: number; discount?: number; discountType?: 'percent' | 'amount'; unit?: string; isCustom?: boolean; notes?: string };
 
 const HOUR_LABEL = (h: number) => h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h - 12}p`;
 
@@ -91,7 +91,8 @@ function POSInner() {
   const [showNotes, setShowNotes] = useState(false);
   const [salesperson, setSalesperson] = useState('');
   const [customData, setCustomData] = useState<Record<string, unknown>>({});
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState((themeSettings.paymentMethods && themeSettings.paymentMethods[0]) || 'Cash');
+  const [saleStatus, setSaleStatus] = useState<'paid' | 'pending'>(themeSettings.defaultInvoiceStatus ?? 'paid');
   const [submitting, setSubmitting] = useState(false);
   const [justSold, setJustSold] = useState<Invoice | null>(null);
   const [customName, setCustomName] = useState('');
@@ -133,6 +134,10 @@ function POSInner() {
 
   const canManagePins = user?.role === 'admin' || user?.role === 'manager';
   const pinnedIds = useMemo(() => themeSettings.posPinnedProductIds ?? [], [themeSettings.posPinnedProductIds]);
+  const paymentMethodOptions = useMemo(() => {
+    const configured = themeSettings.paymentMethods;
+    return configured && configured.length > 0 ? configured : ['Cash', 'Card'];
+  }, [themeSettings.paymentMethods]);
 
   const sellable = useMemo(() => products.filter(p => !p.deletedAt), [products]);
   const categories = useMemo(() => ['all', ...Array.from(new Set(sellable.map(p => p.category).filter(Boolean) as string[]))], [sellable]);
@@ -226,6 +231,14 @@ function POSInner() {
   const setPrice = (key: string, price: number) =>
     setCart(prev => prev.map(l => l.key === key ? { ...l, price } : l));
   const removeLine = (key: string) => setCart(prev => prev.filter(l => l.key !== key));
+  const setLineNotes = (key: string, lineNotes: string) =>
+    setCart(prev => prev.map(l => l.key === key ? { ...l, notes: lineNotes } : l));
+  const [expandedNoteKeys, setExpandedNoteKeys] = useState<Set<string>>(new Set());
+  const toggleLineNotes = (key: string) => setExpandedNoteKeys(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const [editingPriceLine, setEditingPriceLine] = useState<{ key: string; value: string } | null>(null);
   const commitPriceEdit = () => {
     if (!editingPriceLine) return;
@@ -251,13 +264,14 @@ function POSInner() {
   const grossSubtotal = cart.reduce((s, l) => s + lineTotal(l.price, l.qty), 0);
   const itemDiscounts = grossSubtotal - subtotal;
   const discountAmt = invoiceDiscountAmount(subtotal, Number(discountAmtInput) || 0, 'amount');
-  const taxAmt = (subtotal - discountAmt) * ((Number(taxPct) || 0) / 100);
-  const total = subtotal - discountAmt + taxAmt;
+  const taxAmt = percentOf(subtotal - discountAmt, Number(taxPct) || 0);
+  const total = addMoney(subtotal, -discountAmt, taxAmt);
   const itemCount = cart.reduce((s, l) => s + l.qty, 0);
 
   const clearSale = () => {
     setCart([]); setCustomerId('walk-in'); setWalkInName(''); setWalkInPhone('');
-    setDiscountAmtInput(''); setTaxPct(''); setPaymentMethod('cash');
+    setDiscountAmtInput(''); setTaxPct(''); setPaymentMethod(paymentMethodOptions[0] ?? 'Cash');
+    setSaleStatus(themeSettings.defaultInvoiceStatus ?? 'paid');
     setNotes(''); setShowNotes(false); setCustomData({}); setSalesperson('');
     setSaveAsCustomer(false); setShowCustomerDetails(false);
     setNewCustomer({ name: '', phone: '', email: '', company: '', billingAddress: '' });
@@ -344,7 +358,7 @@ function POSInner() {
         : { customerId: undefined, customerName: walkInName.trim() || undefined, customerPhone: walkInPhone.trim() || undefined };
       const items: InvoiceItem[] = cart.map((l, i) => l.isCustom
         ? { productId: `custom-${Date.now()}-${i}`, productName: l.name, quantity: l.qty, price: l.price, cost: 0, isCustom: true }
-        : { productId: l.productId!, productName: l.name, quantity: l.qty, price: l.price, cost: products.find(p => p.id === l.productId)?.cost ?? 0, ...(l.discount ? { discount: l.discount, discountType: l.discountType ?? 'percent' } : {}), unit: l.unit || 'Pcs' });
+        : { productId: l.productId!, productName: l.name, quantity: l.qty, price: l.price, cost: products.find(p => p.id === l.productId)?.cost ?? 0, ...(l.discount ? { discount: l.discount, discountType: l.discountType ?? 'percent' } : {}), unit: l.unit || 'Pcs', ...(l.notes?.trim() ? { notes: l.notes.trim() } : {}) });
       const prefix = themeSettings.invoicePrefix || 'INV-';
       const now = new Date();
 
@@ -377,7 +391,7 @@ function POSInner() {
         ...customerFields,
         userId: user?.id,
         userName: user?.name,
-        status: 'paid',
+        status: saleStatus,
         date: format(now, 'yyyy-MM-dd'),
         createdAt: now.toISOString(),
         dueDate: format(addDays(now, 30), 'yyyy-MM-dd'),
@@ -622,49 +636,73 @@ function POSInner() {
               <p className="text-xs">Tap a product to add it.</p>
             </div>
           ) : cart.map(l => (
-            <div key={l.key} className="flex items-center gap-1.5 rounded-lg border bg-background p-1.5">
-              <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
-                {l.isCustom ? <Sparkles className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{l.name}</p>
-                {editingPriceLine?.key === l.key ? (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="text-[11px] text-muted-foreground">{currencySymbol}</span>
-                    <Input
-                      autoFocus
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={editingPriceLine.value}
-                      onChange={e => setEditingPriceLine({ key: l.key, value: e.target.value })}
-                      onKeyDown={e => { if (e.key === 'Enter') commitPriceEdit(); if (e.key === 'Escape') setEditingPriceLine(null); }}
-                      onBlur={commitPriceEdit}
-                      className="h-6 w-20 rounded-md text-xs px-1.5"
-                    />
-                  </div>
-                ) : (
+            <div key={l.key} className="rounded-lg border bg-background p-1.5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+                  {l.isCustom ? <Sparkles className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{l.name}</p>
+                  {editingPriceLine?.key === l.key ? (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="text-[11px] text-muted-foreground">{currencySymbol}</span>
+                      <Input
+                        autoFocus
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={editingPriceLine.value}
+                        onChange={e => setEditingPriceLine({ key: l.key, value: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') commitPriceEdit(); if (e.key === 'Escape') setEditingPriceLine(null); }}
+                        onBlur={commitPriceEdit}
+                        className="h-6 w-20 rounded-md text-xs px-1.5"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingPriceLine({ key: l.key, value: String(l.price) })}
+                      className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 group"
+                    >
+                      {currencySymbol} {formatNumber(l.price)}{l.unit && <span className="ml-0.5">/{l.unit}</span>}
+                      {(l.discount ?? 0) > 0 && (
+                        <span className="ml-1 font-medium text-primary">
+                          −{l.discountType === 'amount' ? `${currencySymbol}${formatNumber(l.discount!)}` : `${l.discount}%`}
+                        </span>
+                      )}
+                      <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setQty(l.key, l.qty - 1)} className="h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"><Minus className="h-3 w-3" /></button>
+                  <span className="w-5 text-center text-xs font-medium tabular-nums">{l.qty}</span>
+                  <button onClick={() => setQty(l.key, l.qty + 1)} className="h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"><Plus className="h-3 w-3" /></button>
+                </div>
+                {!l.isCustom && (
                   <button
                     type="button"
-                    onClick={() => setEditingPriceLine({ key: l.key, value: String(l.price) })}
-                    className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 group"
-                  >
-                    {currencySymbol} {formatNumber(l.price)}{l.unit && <span className="ml-0.5">/{l.unit}</span>}
-                    {(l.discount ?? 0) > 0 && (
-                      <span className="ml-1 font-medium text-primary">
-                        −{l.discountType === 'amount' ? `${currencySymbol}${formatNumber(l.discount!)}` : `${l.discount}%`}
-                      </span>
+                    onClick={() => toggleLineNotes(l.key)}
+                    title="Add details"
+                    className={cn(
+                      "h-6 w-6 rounded-md flex items-center justify-center transition-colors",
+                      (expandedNoteKeys.has(l.key) || l.notes) ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-muted"
                     )}
-                    <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                  >
+                    <FileText className="h-3.5 w-3.5" />
                   </button>
                 )}
+                <button onClick={() => removeLine(l.key)} className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"><X className="h-3.5 w-3.5" /></button>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setQty(l.key, l.qty - 1)} className="h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"><Minus className="h-3 w-3" /></button>
-                <span className="w-5 text-center text-xs font-medium tabular-nums">{l.qty}</span>
-                <button onClick={() => setQty(l.key, l.qty + 1)} className="h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"><Plus className="h-3 w-3" /></button>
-              </div>
-              <button onClick={() => removeLine(l.key)} className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors"><X className="h-3.5 w-3.5" /></button>
+              {!l.isCustom && (expandedNoteKeys.has(l.key) || l.notes) && (
+                <Input
+                  autoFocus={expandedNoteKeys.has(l.key) && !l.notes}
+                  value={l.notes ?? ''}
+                  onChange={e => setLineNotes(l.key, e.target.value)}
+                  placeholder="Add details for this item…"
+                  className="h-7 rounded-md text-xs"
+                />
+              )}
             </div>
           ))}
 
@@ -723,24 +761,43 @@ function POSInner() {
               <Input value={taxPct} onChange={e => setTaxPct(e.target.value)} type="number" placeholder="Tax" className="h-8 pl-6 rounded-lg text-xs" />
             </div>
           </div>
-          {/* Payment method */}
-          <div className="grid grid-cols-2 gap-1.5">
-            {([
-              { key: 'cash' as const, label: 'Cash', icon: Banknote },
-              { key: 'card' as const, label: 'Card', icon: CreditCard },
-            ]).map(m => (
+          {/* Payment method — options are tenant-configurable (Settings → Financial & Regional) */}
+          <div className={cn("grid gap-1.5", paymentMethodOptions.length <= 2 ? "grid-cols-2" : "grid-cols-3")}>
+            {paymentMethodOptions.map(method => (
               <button
-                key={m.key}
+                key={method}
                 type="button"
-                onClick={() => setPaymentMethod(m.key)}
+                onClick={() => setPaymentMethod(method)}
                 className={cn(
-                  'h-9 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all',
-                  paymentMethod === m.key
+                  'h-9 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all px-2',
+                  paymentMethod === method
                     ? 'bg-primary text-primary-foreground border-primary shadow-token-sm'
                     : 'bg-background text-muted-foreground border-border hover:border-ring/40 hover:text-foreground'
                 )}
               >
-                <m.icon className="h-3.5 w-3.5" /> {m.label}
+                {method === 'Cash' ? <Banknote className="h-3.5 w-3.5" /> : method === 'Card' ? <CreditCard className="h-3.5 w-3.5" /> : <Wallet className="h-3.5 w-3.5" />}
+                <span className="truncate">{method}</span>
+              </button>
+            ))}
+          </div>
+          {/* Sale status — defaults from Settings but can be overridden per sale */}
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              { key: 'paid' as const, label: 'Paid' },
+              { key: 'pending' as const, label: 'Pending' },
+            ]).map(s => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSaleStatus(s.key)}
+                className={cn(
+                  'h-8 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all',
+                  saleStatus === s.key
+                    ? 'bg-secondary text-secondary-foreground border-secondary shadow-token-sm'
+                    : 'bg-background text-muted-foreground border-border hover:border-ring/40 hover:text-foreground'
+                )}
+              >
+                {s.label}
               </button>
             ))}
           </div>
@@ -851,7 +908,7 @@ function POSInner() {
                   return walkIn || 'Walk-in';
                 })()}
               />
-              <Row label="Payment method" value={paymentMethod === 'cash' ? 'Cash' : 'Card'} />
+              <Row label="Payment method" value={paymentMethod} />
               <Row label="Items" value={`${cart.length} ${cart.length === 1 ? 'line' : 'lines'} · ${formatQty(itemCount)} units`} />
             </div>
             {notes.trim() && (

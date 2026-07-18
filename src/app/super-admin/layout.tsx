@@ -1,27 +1,63 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Shield, LogOut } from '@/components/icons';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from '@/components/ui/sidebar';
+import {
+  Shield,
+  LogOut,
+  LayoutDashboard,
+  Building2,
+  Sparkles,
+  Users,
+  PlugZap,
+  Inbox,
+  Settings,
+  Search,
+} from '@/components/icons';
 import { cn } from '@/lib/utils';
+import { CommandPalette } from '@/components/super-admin/CommandPalette';
 
 const NAV = [
-  { href: '/super-admin', label: 'Overview' },
-  { href: '/super-admin/tenants', label: 'Tenants' },
-  { href: '/super-admin/blueprints', label: 'Blueprints' },
-  { href: '/super-admin/users', label: 'Users' },
-  { href: '/super-admin/modules', label: 'Modules' },
-  { href: '/super-admin/requests', label: 'Requests' },
-  { href: '/super-admin/system', label: 'System' },
+  { href: '/super-admin', label: 'Overview', icon: LayoutDashboard },
+  { href: '/super-admin/tenants', label: 'Tenants', icon: Building2 },
+  { href: '/super-admin/blueprints', label: 'Blueprints', icon: Sparkles },
+  { href: '/super-admin/users', label: 'Users', icon: Users },
+  { href: '/super-admin/modules', label: 'Modules', icon: PlugZap },
+  { href: '/super-admin/requests', label: 'Requests', icon: Inbox },
+  { href: '/super-admin/system', label: 'System', icon: Settings },
 ];
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const { isSuperAdmin, isHydrated, user, logout } = useAppContext();
   const pathname = usePathname();
   const router = useRouter();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setPaletteOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   if (!isHydrated) return null;
 
@@ -46,47 +82,68 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="flex items-center justify-between px-4 md:px-6 h-14">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-primary/15 rounded-md">
+    <SidebarProvider defaultOpen>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <div className="p-1.5 bg-primary/15 rounded-md shrink-0">
               <Shield className="w-5 h-5 text-primary" />
             </div>
-            <div>
-              <h1 className="text-sm font-semibold leading-tight">Platform Console</h1>
-              <p className="text-xs text-muted-foreground leading-tight">CZium ERP — Super Admin</p>
+            <div className="group-data-[collapsible=icon]:hidden min-w-0">
+              <h1 className="text-sm font-semibold leading-tight truncate">Platform Console</h1>
+              <p className="text-xs text-muted-foreground leading-tight truncate">CZium ERP — Super Admin</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground hidden sm:inline">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1">
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPaletteOpen(true)}
+            className="mx-2 justify-start gap-2 text-muted-foreground font-normal group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          >
+            <Search className="w-4 h-4 shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">Search…</span>
+            <span className="ml-auto text-xs border rounded px-1 py-0.5 group-data-[collapsible=icon]:hidden">Ctrl K</span>
+          </Button>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu className="px-2">
+            {NAV.map(item => {
+              const active = pathname === item.href;
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                    <Link href={item.href}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
+          <div className="px-2 py-1.5 group-data-[collapsible=icon]:hidden">
+            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
           </div>
-        </div>
-        <nav className="flex gap-1 px-4 md:px-6">
-          {NAV.map(item => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'px-3 py-2 text-sm border-b-2 -mb-px transition-colors',
-                  active
-                    ? 'border-primary text-foreground font-medium'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
-      <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
-    </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className={cn(
+              'mx-2 justify-start gap-2 text-muted-foreground',
+              'group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0'
+            )}
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
+          </Button>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+      </SidebarInset>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+    </SidebarProvider>
   );
 }

@@ -10,7 +10,7 @@ import {
   Archive, Clock, CalendarPlus, Banknote, UserRoundCog, BookCopy, Target, Landmark as LandmarkIcon,
   UserPlus, Star, ClipboardCheck, Megaphone, Briefcase, LifeBuoy, Truck, Map, ChevronDown, Wrench, Database, Receipt, DollarSign, ScanLine, Rocket,
   PieChart, Shield, Mail, TrendingUp, Search, X
-, Upload, ArrowLeftRight, LayoutGrid, MessageSquare, CalendarClock } from '@/components/icons';
+, Upload, ArrowLeftRight, LayoutGrid, MessageSquare, CalendarClock, RefreshCw } from '@/components/icons';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
 import { useFavoriteNavLinks } from '@/hooks/use-favorite-nav-links';
@@ -32,10 +32,10 @@ type NavCategory = {
 
 
 const navLinksConfig: Record<Role, string[]> = {
-    admin: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Stores', 'Warehouses', 'Reports', 'Cohort Analysis', 'Profitability', 'Scheduled Reports', 'Assets', 'Employees', 'Departments', 'Staff Accounts', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'Payroll', 'HR Settings', 'Activity Logs', 'Settings', 'Custom Roles', 'Custom Fields', 'Bulk Import', 'RBAC Permissions', 'Multi-Tenant', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking', 'System Issues', 'Testing Checklist', 'Data Management'],
-    manager: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Stores', 'Reports', 'Cohort Analysis', 'Profitability', 'Activity Logs', 'Settings', 'Bulk Import', 'Assets', 'Employees', 'Departments', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'HR Settings', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking'],
-    cashier: ['Dashboard', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Barcode Scanner', 'Vendors', 'Request for Quotation', 'Purchase Orders', 'Inventory', 'Cycle Count', 'Timesheets', 'Expense Claims', 'Bulk Import'],
-    'inventory-staff': ['AI Assistant', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Vendors', 'Reports', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Barcode Scanner', 'Timesheets', 'Expense Claims', 'Bulk Import'],
+    admin: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Subscriptions', 'Stores', 'Warehouses', 'Reports', 'Cohort Analysis', 'Profitability', 'Scheduled Reports', 'Assets', 'Employees', 'Departments', 'Staff Accounts', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'Payroll', 'HR Settings', 'Activity Logs', 'Settings', 'Custom Roles', 'Custom Fields', 'Bulk Import', 'RBAC Permissions', 'Multi-Tenant', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking', 'System Issues', 'Testing Checklist', 'Data Management'],
+    manager: ['Dashboard', 'Advanced Analytics', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Leads', 'Marketing Campaigns', 'Barcode Scanner', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Request for Quotation', 'Vendors', 'Subscriptions', 'Stores', 'Reports', 'Cohort Analysis', 'Profitability', 'Activity Logs', 'Settings', 'Bulk Import', 'Assets', 'Employees', 'Departments', 'Attendance', 'Timesheets', 'Leave Requests', 'Expense Claims', 'HR Settings', 'General Ledger', 'Accounts Payable', 'Accounts Receivable', 'Tax Management', 'Budgeting', 'Bank Reconciliation', 'Financial Statements', 'Intercompany', 'Job Requisitions', 'Candidate Pipeline', 'Performance', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Projects', 'Support Tickets', 'IT Assets', 'HR Dashboard', 'Fleet Management', 'Route Planning', 'Shipment Tracking'],
+    cashier: ['Dashboard', 'AI Assistant', 'Point of Sale', 'Invoices', 'Quotations', 'Payments', 'Returns', 'Customers', 'AI Upselling', 'Barcode Scanner', 'Vendors', 'Subscriptions', 'Request for Quotation', 'Purchase Orders', 'Inventory', 'Cycle Count', 'Timesheets', 'Expense Claims', 'Bulk Import'],
+    'inventory-staff': ['AI Assistant', 'Inventory', 'Cycle Count', 'Purchase Orders', 'Vendors', 'Subscriptions', 'Reports', 'Bill of Materials', 'Production Orders', 'Quality Control', 'Barcode Scanner', 'Timesheets', 'Expense Claims', 'Bulk Import'],
 };
 
 // Reorganized structure for better logical flow
@@ -78,6 +78,7 @@ const categories: NavCategory[] = [
       { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
       { href: '/rfq', label: 'Request for Quotation', icon: ClipboardList },
       { href: '/inventory/cycle-count', label: 'Cycle Count', icon: ClipboardCheck },
+      { href: '/subscriptions', label: 'Subscriptions', icon: RefreshCw },
     ],
   },
   {
@@ -279,7 +280,7 @@ export default function Nav() {
           <SidebarMenuItem key="__favorites">
             <SidebarMenuButton
               onClick={() => toggleCategory('__favorites')}
-              className="font-semibold text-sidebar-foreground/90"
+              className="font-semibold text-sidebar-foreground/90 hover:text-sidebar-accent-foreground dark:hover:text-white"
               tooltip="Favourites"
             >
               <Star className="w-5 h-5" />
@@ -298,7 +299,7 @@ export default function Nav() {
                   <SidebarMenuSubButton
                     asChild
                     isActive={isActive(link.href, pathname)}
-                    className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary group/fav"
+                    className="dark:hover:text-white data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary group/fav"
                     onClick={() => setNavSearch('')}
                   >
                     <Link href={link.href} className="flex items-center w-full">
@@ -326,7 +327,7 @@ export default function Nav() {
             <SidebarMenuItem key={category.label}>
               <SidebarMenuButton
                 onClick={() => toggleCategory(category.label)}
-                className="font-semibold text-sidebar-foreground/90"
+                className="font-semibold text-sidebar-foreground/90 hover:text-sidebar-accent-foreground dark:hover:text-white"
                 tooltip={category.label}
               >
                 <category.icon className="w-5 h-5" />
@@ -346,7 +347,7 @@ export default function Nav() {
                     <SidebarMenuSubButton
                       asChild
                       isActive={isActive(link.href, pathname)}
-                      className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary"
+                      className="dark:hover:text-white data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary"
                       onClick={() => setNavSearch('')}
                     >
                       <Link href={link.href} className="flex items-center w-full group/link">

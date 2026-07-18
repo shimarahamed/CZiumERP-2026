@@ -85,12 +85,17 @@ export default function SuperAdminTenantsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <Badge variant="default">{activeCount} active</Badge>
-          <Badge variant={suspendedCount > 0 ? 'destructive' : 'secondary'}>{suspendedCount} suspended</Badge>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
+          <p className="text-sm text-muted-foreground mt-1">Create, suspend, and manage every client workspace.</p>
         </div>
         <Button size="sm" onClick={() => setIsFormOpen(v => !v)}>{isFormOpen ? 'Cancel' : 'New Tenant'}</Button>
+      </div>
+
+      <div className="flex gap-2">
+        <Badge variant="default">{activeCount} active</Badge>
+        <Badge variant={suspendedCount > 0 ? 'destructive' : 'secondary'}>{suspendedCount} suspended</Badge>
       </div>
 
       {isFormOpen && (
@@ -153,7 +158,7 @@ export default function SuperAdminTenantsPage() {
             <TableHeader><TableRow><TableHead>Name</TableHead>{isVisible('id') && <TableHead>ID</TableHead>}{isVisible('blueprint') && <TableHead>Blueprint</TableHead>}{isVisible('modules') && <TableHead>Modules</TableHead>}{isVisible('status') && <TableHead>Status</TableHead>}<TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {tenants.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No tenants yet — create the first workspace above.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">No tenants yet — create the first workspace above.</TableCell></TableRow>
               ) : tenants.map(t => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>

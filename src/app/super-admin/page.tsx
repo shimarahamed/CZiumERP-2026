@@ -57,16 +57,23 @@ export default function SuperAdminOverviewPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <p className="text-sm text-muted-foreground mt-1">A snapshot of every workspace, user, and request on the platform.</p>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map(s => (
           <Link key={s.label} href={s.href}>
-            <Card className="hover:border-primary transition-colors cursor-pointer h-full">
+            <Card className="hover:border-primary/60 hover:shadow-md transition-all cursor-pointer h-full">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-                <s.icon className="w-4 h-4 text-muted-foreground" />
+                <div className="p-1.5 rounded-md bg-primary/10">
+                  <s.icon className="w-4 h-4 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{isLoaded ? s.value : '—'}</p>
+                <p className="text-3xl font-bold tracking-tight">{isLoaded ? s.value : '—'}</p>
               </CardContent>
             </Card>
           </Link>
@@ -129,7 +136,7 @@ export default function SuperAdminOverviewPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {pendingRequests.slice(0, 5).map(r => (
-              <div key={r.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+              <div key={r.id} className="flex items-center justify-between border rounded-md px-3 py-2 hover:bg-muted/40 transition-colors">
                 <div>
                   <p className="text-sm font-medium">{r.organizationName}</p>
                   <p className="text-xs text-muted-foreground">{r.contactName} &lt;{r.contactEmail}&gt;</p>

@@ -450,6 +450,8 @@ export type Product = {
   /** For services: products consumed per single performance of the service. */
   serviceLinks?: ServiceProductLink[];
   vendorId?: string;
+  /** Underlying recurring cost (e.g. a shared hosting plan) this product/service is resold from. */
+  subscriptionId?: string;
   reorderThreshold?: number;
   expiryDate?: string;
   warrantyDate?: string;
@@ -532,6 +534,8 @@ export type InvoiceItem = {
   unit?: string;
   /** Manually added line (e.g. a one-off fee) — has no product/stock record. */
   isCustom?: boolean;
+  /** Optional free-text detail added to this line (e.g. size, color, serial no.) — shown on the invoice. */
+  notes?: string;
 };
 
 export type Invoice = {
@@ -559,8 +563,8 @@ export type Invoice = {
   discountType?: 'percent' | 'amount';
   taxRate?: number;
   currency?: Currency;
-  /** How the sale was tendered — shown on the invoice/receipt. */
-  paymentMethod?: 'cash' | 'card';
+  /** How the sale was tendered — shown on the invoice/receipt. Tenant-configurable via Settings (ThemeSettings.paymentMethods). */
+  paymentMethod?: string;
   decidedBy?: string;
   decidedAt?: string;
   rejectionReason?: string;
@@ -612,6 +616,24 @@ export type RecurringInvoice = {
   startDate: string;
   nextDueDate: string;
   status: 'active' | 'paused';
+  createdAt: string;
+};
+
+/** A recurring cost the business pays (e.g. a shared hosting plan), which can be
+ *  resold in slices as one or more Products/Services via Product.subscriptionId. */
+export type Subscription = {
+  id: string;
+  name: string;
+  vendorId?: string;
+  cost: number;
+  currency?: Currency;
+  frequency: RecurringFrequency;
+  startDate: string;
+  /** Optional fixed-term end date; leave unset for an ongoing subscription. */
+  endDate?: string;
+  nextDueDate: string;
+  status: 'active' | 'paused' | 'cancelled';
+  notes?: string;
   createdAt: string;
 };
 
@@ -822,6 +844,8 @@ export type ThemeSettings = {
     defaultInvoiceStatus?: 'paid' | 'pending';
     /** Product ids pinned to the front of the POS catalogue, in display order. */
     posPinnedProductIds?: string[];
+    /** Tenant-configurable payment method names offered in POS/Invoices. Defaults to ['Cash', 'Card'] when unset. */
+    paymentMethods?: string[];
     // Company profile — persisted here so it round-trips through the same
     // Firestore-backed settings doc as branding, instead of localStorage-only.
     companyName?: string;

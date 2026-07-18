@@ -12,7 +12,9 @@ import type { Currency, ThemeSettings } from '@/types';
 import { getCounterValue, setCounterStart } from '@/lib/document-number';
 import ApprovalRulesSettings from '@/components/settings/ApprovalRulesSettings';
 import Link from 'next/link';
-import { Loader2 } from '@/components/icons';
+import { Loader2, X, PlusCircle } from '@/components/icons';
+
+const DEFAULT_PAYMENT_METHODS = ['Cash', 'Card'];
 
 const months = [
     { value: 1, label: 'January' }, { value: 2, label: 'February' },
@@ -40,6 +42,7 @@ export default function FinancialRegionalSettings() {
     const [invoiceCounter, setInvoiceCounter] = useState<number | null>(null);
     const [counterStartInput, setCounterStartInput] = useState('');
     const [counterBusy, setCounterBusy] = useState(false);
+    const [paymentMethodDraft, setPaymentMethodDraft] = useState('');
 
     useEffect(() => {
         setLocalCurrency(currency);
@@ -73,6 +76,23 @@ export default function FinancialRegionalSettings() {
         }
     };
 
+    const paymentMethods = local.paymentMethods ?? DEFAULT_PAYMENT_METHODS;
+
+    const addPaymentMethod = () => {
+        const trimmed = paymentMethodDraft.trim();
+        if (!trimmed) return;
+        if (paymentMethods.some(m => m.toLowerCase() === trimmed.toLowerCase())) {
+            toast({ variant: 'destructive', title: 'Already exists', description: `"${trimmed}" is already a payment method.` });
+            return;
+        }
+        setLocal(prev => ({ ...prev, paymentMethods: [...(prev.paymentMethods ?? DEFAULT_PAYMENT_METHODS), trimmed] }));
+        setPaymentMethodDraft('');
+    };
+
+    const removePaymentMethod = (method: string) => {
+        setLocal(prev => ({ ...prev, paymentMethods: (prev.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter(m => m !== method) }));
+    };
+
     const handleSave = async () => {
         if (!canManage) {
             toast({ variant: 'destructive', title: 'Permission Denied' });
@@ -91,6 +111,7 @@ export default function FinancialRegionalSettings() {
                 invoiceApprovalThreshold: local.invoiceApprovalThreshold ?? 0,
                 approvalRules: local.approvalRules,
                 defaultInvoiceStatus: local.defaultInvoiceStatus ?? 'paid',
+                paymentMethods: local.paymentMethods && local.paymentMethods.length > 0 ? local.paymentMethods : DEFAULT_PAYMENT_METHODS,
             });
             addActivityLog('Settings Updated', 'Financial & Regional settings were updated.');
             toast({ title: 'Financial & Regional Saved', description: 'Your changes have been saved.' });
@@ -161,6 +182,43 @@ export default function FinancialRegionalSettings() {
                         <p className="text-xs text-muted-foreground">Legacy single-approver threshold. A multi-step chain for Invoices below supersedes this.</p>
                         <Input id="invoice-approval-threshold" type="number" min={0} step={0.01} value={local.invoiceApprovalThreshold ?? 0} onChange={(e) => setLocal(prev => ({ ...prev, invoiceApprovalThreshold: Number(e.target.value) }))} placeholder="e.g., 1000" className="max-w-xs" />
                     </div>
+                </div>
+                <div className="space-y-2 rounded-lg border p-4">
+                    <Label>Payment Methods</Label>
+                    <p className="text-xs text-muted-foreground">Offered in POS and Invoices when recording how a sale was tendered.</p>
+                    <div className="flex flex-wrap gap-2">
+                        {paymentMethods.map(method => (
+                            <span key={method} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 pl-3 pr-1.5 py-1 text-sm">
+                                {method}
+                                {canManage && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removePaymentMethod(method)}
+                                        className="rounded-full p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        aria-label={`Remove ${method}`}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </span>
+                        ))}
+                        {paymentMethods.length === 0 && <span className="text-xs text-muted-foreground">No payment methods — add one below.</span>}
+                    </div>
+                    {canManage && (
+                        <div className="flex items-center gap-2 pt-1">
+                            <Input
+                                value={paymentMethodDraft}
+                                onChange={(e) => setPaymentMethodDraft(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPaymentMethod(); } }}
+                                placeholder="e.g. Bank Transfer"
+                                className="max-w-xs"
+                                maxLength={40}
+                            />
+                            <Button type="button" variant="outline" size="sm" onClick={addPaymentMethod}>
+                                <PlusCircle className="h-3.5 w-3.5 mr-1.5" /> Add
+                            </Button>
+                        </div>
+                    )}
                 </div>
                 <div className="space-y-2 rounded-lg border p-4">
                     <Label htmlFor="invoice-counter-start">Invoice Numbering</Label>

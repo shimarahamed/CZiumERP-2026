@@ -10,6 +10,7 @@ import { format, parseISO, addDays, addWeeks, addMonths, addYears } from "date-f
 import { useSearchParams, useRouter } from 'next/navigation';
 import { collection, query, where, orderBy, type Query } from "firebase/firestore";
 import { sendDepartmentEmail } from '@/lib/email';
+import { cn } from '@/lib/utils';
 import { useRequirePermission } from '@/hooks/use-require-role';
 import { buildApprovalWorkflow } from '@/lib/approvals';
 import { adjustStock, consumeLotFEFO, getDefaultWarehouse, setSerialStatus, stockLevelId } from '@/lib/warehouse';
@@ -46,7 +47,7 @@ import InvoiceReceiptView from "@/components/InvoiceReceiptView";
 import { useAppContext } from "@/context/AppContext";
 import { getNextDocumentNumber, bumpCounterToAtLeast } from '@/lib/document-number';
 import { formatDateUK } from '@/lib/date-format';
-import { formatNumber, lineTotal, mulMoney, discountedUnitPrice, invoiceDiscountAmount } from '@/lib/money';
+import { formatNumber, lineTotal, mulMoney, addMoney, discountedUnitPrice, invoiceDiscountAmount, percentOf } from '@/lib/money';
 import type { Invoice, InvoiceItem, Customer, CustomerTier, RecurringInvoice, RecurringFrequency, Attachment, Currency } from "@/types";
 import { Combobox } from "@/components/ui/combobox";
 import BarcodeScanner from "@/components/BarcodeScanner";
@@ -80,6 +81,7 @@ const WARN_TOTAL_SIZE = 819200;
 const invoiceItemSchema = z.object({
   productId: z.string().min(1, "Please select a product."),
   quantity: z.coerce.number().min(1, "Quantity must be at least 1."),
+  notes: z.string().optional(),
 });
 
 const customLineSchema = z.object({
@@ -227,6 +229,12 @@ export default function InvoicesPage() {
 
     const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
     const { fields: customLineFields, append: appendCustomLine, remove: removeCustomLine } = useFieldArray({ control: form.control, name: "customLines" });
+    const [expandedItemNotes, setExpandedItemNotes] = useState<Set<string>>(new Set());
+    const toggleItemNotes = (fieldId: string) => setExpandedItemNotes(prev => {
+        const next = new Set(prev);
+        if (next.has(fieldId)) next.delete(fieldId); else next.add(fieldId);
+        return next;
+    });
 
     // --- Recurring form ---
     const recurringForm = useForm<RecurringFormData>({
@@ -314,8 +322,8 @@ export default function InvoicesPage() {
     }, [watchedItems, watchedCustomLines, products]);
     const itemDiscounts = useMemo(() => grossSubtotal - subtotal, [grossSubtotal, subtotal]);
     const discountAmount = useMemo(() => invoiceDiscountAmount(subtotal, watchedDiscount, watchedDiscountType), [subtotal, watchedDiscount, watchedDiscountType]);
-    const taxAmount = useMemo(() => (subtotal - discountAmount) * (watchedTaxRate / 100), [subtotal, discountAmount, watchedTaxRate]);
-    const totalAmount = useMemo(() => subtotal - discountAmount + taxAmount, [subtotal, discountAmount, taxAmount]);
+    const taxAmount = useMemo(() => percentOf(subtotal - discountAmount, watchedTaxRate || 0), [subtotal, discountAmount, watchedTaxRate]);
+    const totalAmount = useMemo(() => addMoney(subtotal, -discountAmount, taxAmount), [subtotal, discountAmount, taxAmount]);
 
     // Hint shows the effective unit price (net of the product's own discount)
     // right-aligned in the dropdown, so cashiers see amounts while picking.
@@ -359,7 +367,7 @@ export default function InvoicesPage() {
                     paymentMethod: invoiceToEdit.paymentMethod ?? 'cash',
                     currency: invoiceToEdit.currency,
                     date: new Date(invoiceToEdit.date),
-                    items: invoiceToEdit.items.filter(item => !item.isCustom).map(item => ({ productId: item.productId, quantity: item.quantity })),
+                    items: invoiceToEdit.items.filter(item => !item.isCustom).map(item => ({ productId: item.productId, quantity: item.quantity, notes: item.notes })),
                     customLines: invoiceToEdit.items.filter(item => item.isCustom).map(item => ({ description: item.productName, quantity: item.quantity, price: item.price })),
                     discount: invoiceToEdit.discount || 0,
                     discountType: invoiceToEdit.discountType || 'percent',
@@ -547,7 +555,7 @@ export default function InvoicesPage() {
                 toast({ variant: 'destructive', title: 'Product Not Found', description: `A selected product no longer exists.` });
                 return;
             }
-            newInvoiceItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, price: product.price, cost: product.cost, ...(product.discount ? { discount: product.discount, discountType: product.discountType ?? 'percent' } : {}), unit: product.unitOfMeasure || 'Pcs' });
+            newInvoiceItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, price: product.price, cost: product.cost, ...(product.discount ? { discount: product.discount, discountType: product.discountType ?? 'percent' } : {}), unit: product.unitOfMeasure || 'Pcs', ...(item.notes?.trim() ? { notes: item.notes.trim() } : {}) });
         }
         // Custom lines (e.g. one-off fees) carry no product/stock record and never
         // touch the warehouse/stock-reservation logic below.
@@ -933,10 +941,10 @@ export default function InvoicesPage() {
             const product = products.find(p => p.id === i.productId);
             return { productId: i.productId, productName: product?.name ?? i.productId, quantity: i.quantity, price: i.price, cost: i.cost };
         });
-        const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+        const subtotal = addMoney(...items.map(i => mulMoney(i.price, i.quantity)), 0);
         const disc = invoiceDiscountAmount(subtotal, data.discount ?? 0, data.discountType ?? 'amount');
-        const tax = (subtotal - disc) * ((data.taxRate ?? 0) / 100);
-        const amount = subtotal - disc + tax;
+        const tax = percentOf(subtotal - disc, data.taxRate ?? 0);
+        const amount = addMoney(subtotal, -disc, tax);
         const startStr = format(data.startDate, 'yyyy-MM-dd');
 
         if (recurringToEdit) {
@@ -1306,7 +1314,7 @@ export default function InvoicesPage() {
                                 )} />
                                 <FormField control={form.control} name="discount" render={({ field }) => (
                                     <FormItem className="flex flex-col">
-                                        <FormLabel className="text-xs text-muted-foreground">Discount ({currencySymbol})</FormLabel>
+                                        <FormLabel className="text-xs text-muted-foreground">Discount ({watchedDiscountType === 'percent' ? '%' : currencySymbol})</FormLabel>
                                         <FormControl><Input type="number" step="0.01" placeholder="0" {...field} readOnly={!!activeTier} /></FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -1361,19 +1369,39 @@ export default function InvoicesPage() {
                                 </div>
                                 <div className="rounded-lg border divide-y">
                                     {fields.map((field, index) => (
-                                        <div key={field.id} className="flex items-center gap-2 p-2">
-                                            <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
-                                                <FormItem className="flex-1 min-w-0">
-                                                    <FormControl>
-                                                        <Combobox options={productOptions} value={field.value} onValueChange={field.onChange} placeholder="Select a product..." searchPlaceholder="Search products..." emptyText="No products found." />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
-                                                <FormItem className="w-20 shrink-0"><FormControl><Input type="number" placeholder="Qty" {...field} /></FormControl><FormMessage /></FormItem>
-                                            )} />
-                                            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => remove(index)}><Trash2 className="h-4 w-4" /></Button>
+                                        <div key={field.id} className="p-2 space-y-1.5">
+                                            <div className="flex items-center gap-2">
+                                                <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
+                                                    <FormItem className="flex-1 min-w-0">
+                                                        <FormControl>
+                                                            <Combobox options={productOptions} value={field.value} onValueChange={field.onChange} placeholder="Select a product..." searchPlaceholder="Search products..." emptyText="No products found." />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                                <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
+                                                    <FormItem className="w-20 shrink-0"><FormControl><Input type="number" placeholder="Qty" {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className={cn(
+                                                        "h-9 w-9 shrink-0",
+                                                        (expandedItemNotes.has(field.id) || watchedItems?.[index]?.notes) ? "text-primary" : "text-muted-foreground"
+                                                    )}
+                                                    title="Add details"
+                                                    onClick={() => toggleItemNotes(field.id)}
+                                                >
+                                                    <FileText className="h-4 w-4" />
+                                                </Button>
+                                                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => remove(index)}><Trash2 className="h-4 w-4" /></Button>
+                                            </div>
+                                            {(expandedItemNotes.has(field.id) || watchedItems?.[index]?.notes) && (
+                                                <FormField control={form.control} name={`items.${index}.notes`} render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Add details for this item…" className="h-8 text-xs" {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                            )}
                                         </div>
                                     ))}
                                     {customLineFields.map((field, index) => (

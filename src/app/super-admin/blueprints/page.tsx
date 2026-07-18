@@ -121,11 +121,14 @@ export default function SuperAdminBlueprintsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Verticals define the module bundle, custom fields, and label overrides a tenant starts with. Editable here — no deploy needed.
-        </p>
-        <div className="flex gap-2">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Blueprints</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Verticals define the module bundle, custom fields, and label overrides a tenant starts with. Editable here — no deploy needed.
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
           <Button size="sm" variant="outline" onClick={handleSeed} disabled={busy}>Seed defaults</Button>
           <Button size="sm" onClick={startNew}><PlusCircle className="w-4 h-4 mr-1" />New blueprint</Button>
         </div>

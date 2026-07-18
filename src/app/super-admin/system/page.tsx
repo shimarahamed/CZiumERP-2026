@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import type { PlatformSettings } from '@/types';
-import { Loader2 } from '@/components/icons';
+import { Loader2, ShieldCheck, PlugZap, ScrollText, CheckCircle, AlertTriangle, Circle } from '@/components/icons';
 
 const DEFAULT_POWERED_BY = 'Powered by CZium Tech | www.czium.com';
 
@@ -78,9 +78,19 @@ export default function SuperAdminSystemPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">System</h1>
+        <p className="text-sm text-muted-foreground mt-1">Branding, server capabilities, and platform operators.</p>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Platform Branding</CardTitle>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+            </div>
+            <CardTitle className="text-base">Platform Branding</CardTitle>
+          </div>
           <CardDescription>
             Shown below every tenant&apos;s own footer text on printed invoices and receipts, across all tenants.
           </CardDescription>
@@ -104,39 +114,58 @@ export default function SuperAdminSystemPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Cloud Functions</CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-primary/10">
+                <PlugZap className="w-4 h-4 text-primary" />
+              </div>
+              <CardTitle className="text-base">Cloud Functions</CardTitle>
+            </div>
+            {fnStatus === 'available' && (
+              <Badge className="gap-1"><CheckCircle className="w-3 h-3" />Deployed</Badge>
+            )}
+            {fnStatus === 'unavailable' && (
+              <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" />Not deployed</Badge>
+            )}
+            {fnStatus === 'unknown' && (
+              <Badge variant="secondary" className="gap-1"><Circle className="w-3 h-3" />Unknown</Badge>
+            )}
+          </div>
           <CardDescription>
             Server-side capabilities require the Blaze plan and a functions deploy
             (firebase deploy --only functions). Everything else in this console works without them.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Button size="sm" variant="outline" onClick={checkFunctions} disabled={fnStatus === 'checking'}>
-              {fnStatus === 'checking' ? 'Checking…' : 'Check availability'}
-            </Button>
-            {fnStatus === 'available' && <Badge>Functions deployed</Badge>}
-            {fnStatus === 'unavailable' && <Badge variant="destructive">Not deployed</Badge>}
+          <Button size="sm" variant="outline" onClick={checkFunctions} disabled={fnStatus === 'checking'}>
+            {fnStatus === 'checking' ? 'Checking…' : 'Check availability'}
+          </Button>
+          <div className="border rounded-md overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow><TableHead>Function</TableHead><TableHead>Unlocks</TableHead></TableRow>
+              </TableHeader>
+              <TableBody>
+                {FUNCTION_CAPABILITIES.map(f => (
+                  <TableRow key={f.name}>
+                    <TableCell className="font-mono text-xs whitespace-nowrap">{f.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{f.purpose}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow><TableHead>Function</TableHead><TableHead>Unlocks</TableHead></TableRow>
-            </TableHeader>
-            <TableBody>
-              {FUNCTION_CAPABILITIES.map(f => (
-                <TableRow key={f.name}>
-                  <TableCell className="font-mono text-xs whitespace-nowrap">{f.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{f.purpose}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Platform operators</CardTitle>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+            </div>
+            <CardTitle className="text-base">Platform operators</CardTitle>
+          </div>
           <CardDescription>
             Accounts holding the superAdmin claim. This list is maintained by the setUserClaims function;
             operators granted via the script appear once that function has run for them.
@@ -148,24 +177,31 @@ export default function SuperAdminSystemPage() {
               No records yet — grant or refresh an operator with: node scripts/manage-auth-users.mjs superadmin &lt;email&gt;
             </p>
           ) : (
-            <Table>
-              <TableHeader><TableRow><TableHead>UID</TableHead><TableHead>Email</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {superAdmins.map(sa => (
-                  <TableRow key={sa.id}>
-                    <TableCell className="font-mono text-xs">{sa.id}</TableCell>
-                    <TableCell className="text-sm">{sa.email ?? '—'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="border rounded-md overflow-hidden">
+              <Table>
+                <TableHeader><TableRow><TableHead>UID</TableHead><TableHead>Email</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {superAdmins.map(sa => (
+                    <TableRow key={sa.id}>
+                      <TableCell className="font-mono text-xs">{sa.id}</TableCell>
+                      <TableCell className="text-sm">{sa.email ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Provisioning reference</CardTitle>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <ScrollText className="w-4 h-4 text-primary" />
+            </div>
+            <CardTitle className="text-base">Provisioning reference</CardTitle>
+          </div>
           <CardDescription>Terminal commands for account operations that need the Admin SDK.</CardDescription>
         </CardHeader>
         <CardContent>

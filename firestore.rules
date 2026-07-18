@@ -306,6 +306,10 @@ service cloud.firestore {
         allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');
       }
+      match /subscriptions/{id} {
+        allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
+          && moduleEnabled(tenantId, 'Supply Chain');
+      }
       match /purchaseOrders/{id} {
         allow read, write: if isSupplyChainStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Supply Chain');

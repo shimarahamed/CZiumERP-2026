@@ -72,6 +72,7 @@ const productSchema = z.object({
   barcode: z.string().optional(),
   brand: z.string().optional(),
   vendorId: z.string().optional(),
+  subscriptionId: z.string().optional(),
   reorderThreshold: z.coerce.number().int().min(0, "Reorder threshold must be non-negative.").optional(),
   expiryDate: z.date().optional().nullable(),
   warrantyDate: z.date().optional().nullable(),
@@ -93,12 +94,12 @@ const productTypeVariant: { [key in Product['productType'] & string]: 'default' 
 };
 
 /** Common units of measure offered in the product form; shown on invoice/receipt lines. */
-const COMMON_UNITS = ['Pcs', 'Kg', 'g', 'Ltr', 'ml', 'Box', 'Pack', 'Dozen', 'Pair', 'Set', 'm', 'cm', 'Roll', 'Bag', 'Bottle', 'Can', 'Carton', 'Hour'];
+const COMMON_UNITS = ['Pcs', 'Kg', 'g', 'Ltr', 'ml', 'Box', 'Pack', 'Dozen', 'Pair', 'Set', 'm', 'cm', 'Roll', 'Bag', 'Bottle', 'Can', 'Carton', 'Hour', 'Day', 'Week', 'Month', 'Year'];
 
 
 export default function InventoryPage() {
   usePageTitle('Inventory');
-    const { setProducts, products, productCategories, setProductCategories, vendors, addActivityLog, currencySymbol, user, isDataLoaded } = useAppContext();
+    const { setProducts, products, productCategories, setProductCategories, vendors, subscriptions, addActivityLog, currencySymbol, user, isDataLoaded } = useAppContext();
     const { toast } = useToast();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [productToEdit, setProductToEdit] = useState<Product | null>(null);
@@ -152,6 +153,7 @@ export default function InventoryPage() {
             barcode: '',
             brand: '',
             vendorId: 'none',
+            subscriptionId: 'none',
             reorderThreshold: 0,
             expiryDate: null,
             warrantyDate: null,
@@ -180,6 +182,11 @@ export default function InventoryPage() {
         { label: 'None', value: 'none' },
         ...vendors.map(v => ({ label: v.name, value: v.id })),
     ], [vendors]);
+
+    const subscriptionOptions = useMemo(() => [
+        { label: 'None', value: 'none' },
+        ...subscriptions.map(s => ({ label: s.name, value: s.id })),
+    ], [subscriptions]);
 
     const categoryOptions = useMemo(() => {
         const names = new Map<string, string>();
@@ -213,6 +220,27 @@ export default function InventoryPage() {
         form.setValue('category', trimmed, { shouldDirty: true, shouldValidate: true });
         addActivityLog('Category Added', `Added product category: ${trimmed}`);
         toast({ title: 'Category added', description: `${trimmed} is now available for products.` });
+    };
+
+    const [customUnits, setCustomUnits] = useState<string[]>([]);
+
+    const unitOptions = useMemo(() => {
+        const names = new Map<string, string>();
+        COMMON_UNITS.forEach(u => names.set(u.toLowerCase(), u));
+        customUnits.forEach(u => { if (!names.has(u.toLowerCase())) names.set(u.toLowerCase(), u); });
+        products.forEach(product => {
+            const u = product.unitOfMeasure?.trim();
+            if (u && !names.has(u.toLowerCase())) names.set(u.toLowerCase(), u);
+        });
+        return [...names.values()].map(name => ({ label: name, value: name }));
+    }, [customUnits, products]);
+
+    const addUnit = (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const existing = unitOptions.find(option => option.label.toLowerCase() === trimmed.toLowerCase());
+        if (!existing) setCustomUnits(prev => [trimmed, ...prev]);
+        form.setValue('unitOfMeasure', existing?.value ?? trimmed, { shouldDirty: true, shouldValidate: true });
     };
 
     const confirmDeleteCategory = () => {
@@ -306,6 +334,7 @@ export default function InventoryPage() {
               discountType: product.discountType ?? 'percent',
               unitOfMeasure: product.unitOfMeasure ?? 'Pcs',
               vendorId: product.vendorId ?? 'none',
+              subscriptionId: product.subscriptionId ?? 'none',
               reorderThreshold: product.reorderThreshold ?? 0,
               expiryDate: product.expiryDate ? new Date(product.expiryDate) : null,
               warrantyDate: product.warrantyDate ? new Date(product.warrantyDate) : null,
@@ -314,7 +343,7 @@ export default function InventoryPage() {
               serviceLinks: product.serviceLinks ?? [],
             });
         } else {
-            form.reset({ name: '', kind: 'product', price: 0, cost: 0, discount: 0, discountType: 'amount', stock: 0, sku: '', category: '', description: '', unitOfMeasure: 'Pcs', barcode: '', brand: '', vendorId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
+            form.reset({ name: '', kind: 'product', price: 0, cost: 0, discount: 0, discountType: 'amount', stock: 0, sku: '', category: '', description: '', unitOfMeasure: 'Pcs', barcode: '', brand: '', vendorId: 'none', subscriptionId: 'none', reorderThreshold: 0, expiryDate: null, warrantyDate: null, productType: 'standard', trackingMode: 'none', serviceLinks: [] });
         }
         setIsFormOpen(true);
     };
@@ -345,6 +374,7 @@ export default function InventoryPage() {
         const productData = {
           ...data,
           vendorId: data.vendorId === 'none' ? undefined : data.vendorId,
+          subscriptionId: data.subscriptionId === 'none' ? undefined : data.subscriptionId,
           unitOfMeasure: data.unitOfMeasure === 'none' ? undefined : data.unitOfMeasure,
           expiryDate: data.expiryDate ? data.expiryDate.toISOString() : undefined,
           warrantyDate: data.warrantyDate ? data.warrantyDate.toISOString() : undefined,
@@ -710,7 +740,7 @@ export default function InventoryPage() {
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto px-2">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <FormField control={form.control} name="name" render={({ field }) => (
-                                    <FormItem><FormLabel>{watchedKind === 'service' ? 'Service' : 'Product'} Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem className="col-span-2"><FormLabel>{watchedKind === 'service' ? 'Service' : 'Product'} Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name="kind" render={({ field }) => (
                                     <FormItem><FormLabel>Item Type</FormLabel>
@@ -820,18 +850,20 @@ export default function InventoryPage() {
                                     </FormItem>
                                 )} />
                                 <FormField control={form.control} name="unitOfMeasure" render={({ field }) => (
-                                    <FormItem><FormLabel>Unit of Measure</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value || 'none'}>
-                                            <FormControl><SelectTrigger><SelectValue placeholder="Select a unit" /></SelectTrigger></FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="none">None</SelectItem>
-                                                {/* keep a legacy free-text unit selectable so editing doesn't lose it */}
-                                                {field.value && field.value !== 'none' && !COMMON_UNITS.includes(field.value) && (
-                                                    <SelectItem value={field.value}>{field.value}</SelectItem>
-                                                )}
-                                                {COMMON_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
+                                    <FormItem className="flex flex-col"><FormLabel>Unit of Measure</FormLabel>
+                                        <FormControl>
+                                            <Combobox
+                                                options={[{ label: 'None', value: 'none' }, ...unitOptions]}
+                                                value={field.value || 'none'}
+                                                onValueChange={field.onChange}
+                                                onCreateOption={addUnit}
+                                                createOptionLabel={(label) => `Add unit "${label}"`}
+                                                placeholder="Select a unit"
+                                                searchPlaceholder="Search or add unit..."
+                                                emptyText="No unit found."
+                                                className="w-full"
+                                            />
+                                        </FormControl>
                                         <p className="text-xs text-muted-foreground">Shown next to quantities on invoices &amp; receipts.</p>
                                         <FormMessage />
                                     </FormItem>
@@ -840,7 +872,7 @@ export default function InventoryPage() {
                                     <FormItem><FormLabel>Barcode</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <FormField control={form.control} name="brand" render={({ field }) => (
                                     <FormItem><FormLabel>Brand</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
@@ -857,6 +889,23 @@ export default function InventoryPage() {
                                                 className="w-full"
                                             />
                                         </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                <FormField control={form.control} name="subscriptionId" render={({ field }) => (
+                                    <FormItem className="flex flex-col"><FormLabel>Link to Subscription</FormLabel>
+                                        <FormControl>
+                                            <Combobox
+                                                options={subscriptionOptions}
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                                placeholder="None"
+                                                searchPlaceholder="Search subscriptions..."
+                                                emptyText="No subscription found."
+                                                className="w-full"
+                                            />
+                                        </FormControl>
+                                        <p className="text-xs text-muted-foreground">If this is resold from a recurring cost (e.g. a shared hosting plan), link it here.</p>
                                         <FormMessage />
                                     </FormItem>
                                 )} />

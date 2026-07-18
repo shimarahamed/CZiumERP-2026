@@ -258,11 +258,6 @@
     color: #666 !important;
   }
 
-  /* Ensure template accent colors and white text on colored backgrounds work */
-  body.printing-invoice [style*="backgroundColor"] {
-    background-color: inherit !important;
-  }
-
   /* Receipt variant */
   body.printing-invoice .printable-area.receipt {
     font-family: monospace !important;
@@ -282,16 +277,14 @@
     page-break-inside: avoid;
   }
 
-  /* Letterhead watermark: on screen it's positioned at `top: 75%` of
-     `.printable-area`'s scrollHeight, which varies with how the document was
-     opened (embedded post-create preview vs. the invoices-list dialog have
-     different surrounding chrome), so that percentage can land close enough
-     to the page's bottom edge to get clipped by the physical page boundary.
-     Pin it to a fixed spot on the first printed page instead, independent of
-     the container's on-screen height. */
+  /* Letterhead watermark: on screen it's anchored `315px` below the top of
+     `.printable-area`, right below the item table's header row. Print sits
+     10% lower than the screen offset (315px * 1.1 ≈ 347px) since the printed
+     page's own chrome pushes the header row further down than the on-screen
+     dialog. */
   body.printing-invoice .letterhead-watermark {
     position: fixed !important;
-    top: 130mm !important;
+    top: 380px !important;
     bottom: auto !important;
     transform: none !important;
   }

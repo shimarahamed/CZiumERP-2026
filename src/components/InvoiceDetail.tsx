@@ -221,7 +221,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     <Image src={watermarkSrc} alt="" aria-hidden width={300} height={300}
                         className="pointer-events-none absolute inset-0 m-auto w-[45%] max-h-[40%] object-contain opacity-[0.05]" />
                 )}
-                <div className="text-center mb-4">
+                <div className={cn('text-center mb-4', isLetterhead && 'pb-3 border-b-2 border-black')}>
                     {isLetterhead && (letterheadImage || letterheadWording) ? (
                         /* Letterhead: logo on the left, header artwork/wordings on the
                            right, both centered as a group at the top of the slip. */
@@ -247,11 +247,11 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     {!(isLetterhead && (letterheadImage || letterheadWording)) && <h2 className="text-lg font-bold">{companyName}</h2>}
                     <p>{companyAddress}</p>
                     {themeSettings.companyPhone?.trim() && <p>{isLetterhead ? '' : ''}{themeSettings.companyPhone.trim()}</p>}
-                    {isLetterhead && companyEmail && <p>Email: {companyEmail}</p>}
+                    {companyEmail && <p>{isLetterhead ? `Email: ${companyEmail}` : companyEmail}</p>}
                     {themeSettings.companyWebsite?.trim() && <p>{themeSettings.companyWebsite.trim()}</p>}
                     {regNumber && <p>Reg No: {regNumber}</p>}
                 </div>
-                <div className="border-t border-dashed my-2"></div>
+                {!isLetterhead && <div className="border-t border-dashed my-2"></div>}
                 <div className="flex justify-between">
                     <span>Invoice #:</span>
                     <span>{invoice.id}</span>
@@ -292,11 +292,11 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                 )}
                 {invoice.customData && Object.keys(invoice.customData).length > 0 && (
                     <>
-                        <div className="border-t border-dashed my-2"></div>
+                        <div className={cn('border-t my-2', isLetterhead ? 'border-black' : 'border-dashed')}></div>
                         <CustomFieldsDisplay entity="invoice" value={invoice.customData} />
                     </>
                 )}
-                <div className="border-t border-dashed my-2"></div>
+                <div className={cn('border-t my-2', isLetterhead ? 'border-black' : 'border-dashed')}></div>
 
                 <div>
                     <div className="flex font-bold">
@@ -305,7 +305,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                         <div className="w-16 text-right">Price ({currencySymbol})</div>
                         <div className="w-16 text-right">Total ({currencySymbol})</div>
                     </div>
-                    <div className="border-b border-dashed my-1"></div>
+                    <div className={cn('border-b my-1', isLetterhead ? 'border-black' : 'border-dashed')}></div>
                     {invoice.items.map((item, index) => (
                          <div key={`detail-item-${index}`} className="my-1">
                             <div className="flex">
@@ -319,12 +319,15 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                                     Includes {item.discountType === 'amount' ? `${currencySymbol} ${formatNumber(item.discount!)}` : `${item.discount}%`} item discount
                                 </div>
                             )}
+                            {item.notes && (
+                                <div className="text-[10px] text-muted-foreground pl-2">{item.notes}</div>
+                            )}
                         </div>
                     ))}
                 </div>
 
-                <div className="border-t border-dashed my-2"></div>
-                
+                <div className={cn('border-t my-2', isLetterhead ? 'border-black' : 'border-dashed')}></div>
+
                 <div className="space-y-1">
                     <div className="flex justify-between">
                         <span>Subtotal</span>
@@ -342,7 +345,7 @@ const InvoiceDetail = ({ invoice, embedded = false }: InvoiceDetailProps) => {
                     </div>
                 </div>
 
-                <div className="border-t-2 border-dashed my-2"></div>
+                <div className={cn('border-t-2 my-2', isLetterhead ? 'border-black' : 'border-dashed')}></div>
 
                 <div className="flex justify-between font-bold text-base">
                     <span>GRAND TOTAL</span>

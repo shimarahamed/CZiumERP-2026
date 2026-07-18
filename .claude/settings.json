@@ -36,7 +36,9 @@
       "Bash(firebase target *)",
       "Bash(firebase target:apply storage main czium-pos.firebasestorage.app)",
       "Bash(firebase functions:log --only downloadTenantBackup -n 30)",
-      "Bash(npx firebase *)"
+      "Bash(npx firebase *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:9002 --max-time 5)",
+      "Bash(echo \"exit:$?\")"
     ]
   }
 }

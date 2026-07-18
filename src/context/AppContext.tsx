@@ -3,7 +3,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo , useRef } from 'react';
-import type { Invoice, Customer, Product, ProductCategory, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition, PlatformSettings } from '@/types';
+import type { Invoice, Customer, Product, ProductCategory, User, Vendor, ActivityLog, ActivityLogChange, Store, Currency, CurrencySymbols, PurchaseOrder, RFQ, Asset, ITAsset, AttendanceEntry, LeaveRequest, Employee, LedgerEntry, TaxRate, Budget, Candidate, PerformanceReview, BillOfMaterials, ProductionOrder, QualityCheck, Lead, Campaign, Project, Task, Ticket, JobRequisition, Shipment, ThemeSettings, Module, Role, LoyaltySettings, Notification, VendorBill, Refund, RecurringInvoice, Subscription, SmtpConfig, EmailTemplateConfig, EmailLog, SmsConfig, WhatsappConfig, MessageLog, ApprovalWorkflow, CustomRole, Warehouse, StockLevel, Lot, SerialUnit, PayrollRun, IntercompanyTransaction, CustomFieldDefinition, PlatformSettings } from '@/types';
 import { initialInvoices, initialCustomers, initialProducts, initialVendors, initialStores, initialUsers, initialPurchaseOrders, initialRfqs, initialAssets, initialItAssets, initialAttendance, initialLeaveRequests, initialEmployees, initialLedgerEntries, initialTaxRates, initialBudgets, initialCandidates, initialPerformanceReviews, initialBillsOfMaterials, initialProductionOrders, initialQualityChecks, initialLeads, initialCampaigns, initialProjects, initialTasks, initialTickets, initialJobRequisitions, initialShipments, initialVendorBills } from '@/lib/data';
 
 import { useFirestoreCollection } from '@/hooks/use-firestore-collection';
@@ -102,6 +102,8 @@ interface AppContextType {
   addActivityLog: (action: string, details: string, changes?: ActivityLogChange[]) => void;
   recurringInvoices: RecurringInvoice[];
   setRecurringInvoices: CollectionSetter<RecurringInvoice>;
+  subscriptions: Subscription[];
+  setSubscriptions: CollectionSetter<Subscription>;
   attendance: AttendanceEntry[];
   setAttendance: CollectionSetter<AttendanceEntry>;
   leaveRequests: LeaveRequest[];
@@ -326,6 +328,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [notifications, setNotifications] = useFirestoreCollection<Notification>('notifications', [], tenantId);
   const [refunds, setRefunds] = useFirestoreCollection<Refund>('refunds', [], salesTenantId);
   const [recurringInvoices, setRecurringInvoices] = useFirestoreCollection<RecurringInvoice>('recurringInvoices', [], managerTenantId);
+  const [subscriptions, setSubscriptions] = useFirestoreCollection<Subscription>('subscriptions', [], managerTenantId);
   const [smtpConfigList, setSmtpConfigList] = useFirestoreCollection<SmtpConfig>('smtpConfig', [], adminTenantId);
   const [emailTemplates, setEmailTemplates] = useFirestoreCollection<EmailTemplateConfig>('emailTemplates', [], tenantId);
   const [emailLogs, setEmailLogs] = useFirestoreCollection<EmailLog>('emailLogs', [], managerTenantId);
@@ -928,6 +931,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       jobRequisitions, setJobRequisitions,
       shipments, setShipments,
       recurringInvoices, setRecurringInvoices,
+      subscriptions, setSubscriptions,
       smtpConfigList, setSmtpConfigList,
       emailTemplates, setEmailTemplates,
       emailLogs, setEmailLogs,

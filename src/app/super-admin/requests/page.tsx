@@ -67,6 +67,11 @@ export default function SuperAdminRequestsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Requests</h1>
+        <p className="text-sm text-muted-foreground mt-1">Approve or reject organizations that registered from the login page.</p>
+      </div>
+
       <div className="flex gap-2">
         <Badge variant={pending.length > 0 ? 'default' : 'secondary'}>{pending.length} pending</Badge>
         <Badge variant="secondary">{approvedCount} approved</Badge>

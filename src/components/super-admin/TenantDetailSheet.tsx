@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
-import { Loader2 } from '@/components/icons';
+import { Loader2, Users as UsersIcon, PlugZap, Calendar, Database as DatabaseIcon } from '@/components/icons';
 import { useToast } from '@/hooks/use-toast';
 import { TenantBackupPanel } from '@/components/backup/TenantBackupPanel';
 import type { Tenant, User, Role, IndustryTemplate } from '@/types';
@@ -292,6 +292,16 @@ export function TenantDetailSheet({
 
   if (!tenant) return null;
 
+  const allowedCount = tenant.allowedModules?.length ?? 0;
+  const enabledCount = tenant.enabledModules?.length ?? 0;
+
+  const overviewStats = [
+    { label: 'Users', value: loadingUsers ? '—' : users.length, icon: UsersIcon },
+    { label: 'Modules', value: `${enabledCount}/${allowedCount}`, sub: 'enabled / allowed', icon: PlugZap },
+    { label: 'Plan', value: tenant.plan ?? 'standard', icon: DatabaseIcon, capitalize: true },
+    { label: 'Created', value: tenant.createdAt ? tenant.createdAt.slice(0, 10) : '—', icon: Calendar },
+  ];
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
@@ -303,11 +313,19 @@ export function TenantDetailSheet({
           <Badge variant={tenant.status === 'active' ? 'default' : 'destructive'} className="w-fit">{tenant.status}</Badge>
         </SheetHeader>
 
-        <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          <p>Plan: {tenant.plan ?? 'standard'}</p>
-          <p>Created: {tenant.createdAt}</p>
-          <p>Allowed modules: {tenant.allowedModules?.join(', ') || '—'}</p>
-          <p>Enabled modules: {tenant.enabledModules?.join(', ') || '—'}</p>
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {overviewStats.map(s => (
+            <Card key={s.label} className="shadow-none">
+              <CardContent className="p-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <s.icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-xs">{s.label}</span>
+                </div>
+                <p className={`text-lg font-semibold leading-tight ${s.capitalize ? 'capitalize' : ''}`}>{s.value}</p>
+                {'sub' in s && s.sub && <p className="text-[10px] text-muted-foreground leading-none">{s.sub}</p>}
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         <Tabs defaultValue="profile" className="mt-6">
