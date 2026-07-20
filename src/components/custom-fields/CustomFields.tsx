@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { CustomFieldDefinition, CustomFieldEntity } from '@/types';
+import { formatCustomFieldDisplayValue } from '@/components/custom-fields/custom-field-display';
 
 /** Definitions for one entity, sorted for stable form ordering. */
 export function useCustomFields(entity: CustomFieldEntity): CustomFieldDefinition[] {
@@ -115,11 +116,11 @@ export function CustomFieldsDisplay({ entity, value }: { entity: CustomFieldEnti
   if (populated.length === 0) return null;
 
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
       {populated.map(f => (
         <div key={f.key} className="contents">
-          <dt className="text-muted-foreground">{f.label}</dt>
-          <dd className="font-medium">{f.fieldType === 'boolean' ? (data[f.key] ? 'Yes' : 'No') : String(data[f.key])}</dd>
+          <dt className="text-muted-foreground whitespace-nowrap pr-3 text-left">{f.label}</dt>
+          <dd className="font-medium break-words text-left">{formatCustomFieldDisplayValue(data[f.key], f)}</dd>
         </div>
       ))}
     </dl>

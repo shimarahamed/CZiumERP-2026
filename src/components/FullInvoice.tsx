@@ -19,6 +19,7 @@ import { nodeToPdfBase64, printNodeAsPdf } from '@/lib/invoice-pdf';
 import { CustomFieldsDisplay, useCustomFields } from '@/components/custom-fields/CustomFields';
 import { formatDateUK, formatTimeUK } from '@/lib/date-format';
 import { cn } from '@/lib/utils';
+import { getBillToLines } from '@/lib/invoice-bill-to';
 
 interface FullInvoiceProps {
     invoice: Invoice;
@@ -377,7 +378,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                       {regNumber && <p className="text-sm">Reg No: {regNumber}</p>}
                     </div>
                     <div className="sm:w-64 p-4 shrink-0">
-                      <h2 className="text-2xl font-bold tracking-wide mb-1"># {invoice.id}</h2>
+                      <h2 className="text-2xl font-bold tracking-wide mb-1">#{invoice.id}</h2>
                       <p className="text-lg font-semibold text-muted-foreground mb-2">INVOICE</p>
                       <div className="text-sm space-y-1">
                         <div className="flex justify-between gap-2"><span className="font-semibold">Date:</span><span>{formatDateUK(invoice.date)}</span></div>
@@ -396,9 +397,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                   <div className="flex flex-col sm:flex-row border-b border-gray-400">
                     <div className="flex-1 p-4 sm:border-r sm:border-gray-400">
                       <h3 className="font-semibold mb-1 uppercase text-xs tracking-wide">Bill To</h3>
-                      <p>{invoice.customerName || 'Walk-in Customer'}</p>
-                      {(invoice.customerPhone || customer?.phone) && <p className="text-muted-foreground">{invoice.customerPhone || customer?.phone}</p>}
-                      {(invoice.customerEmail || customer?.email) && <p className="text-muted-foreground">{invoice.customerEmail || customer?.email}</p>}
+                      {getBillToLines(invoice, customer).map((line, index) => (
+                        <p key={`${line.text}-${index}`} className={line.muted ? 'text-muted-foreground' : undefined}>{line.text}</p>
+                      ))}
                     </div>
                     {invoice.customData && Object.keys(invoice.customData).length > 0 && (
                       <div className="sm:w-64 p-4 shrink-0 text-sm space-y-1">
@@ -530,7 +531,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                           <h1 className="text-2xl font-bold">{companyName}</h1>
                         )}
                       </div>
-                      <div className="sm:text-right text-xs leading-5 shrink-0">
+                      <div className="sm:text-right text-sm leading-6 shrink-0">
                         {companyAddress && <p className="whitespace-pre-wrap">{companyAddress}</p>}
                         {companyPhone && <p>{companyPhone}</p>}
                         {companyEmail && <p> {companyEmail}</p>}
@@ -540,8 +541,8 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     </div>
                     {/* Compact document meta strip under the letterhead rule */}
                     <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-3">
-                      <h2 className="text-xl font-bold tracking-wide">INVOICE <span className="font-normal text-muted-foreground"># {invoice.id}</span></h2>
-                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                      <h2 className="text-xl font-bold tracking-wide">INVOICE <span className="font-normal text-muted-foreground">#{invoice.id}</span></h2>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
                         <span><span className="font-semibold">Date:</span> {formatDateUK(invoice.date)}</span>
                         <span><span className="font-semibold">Time:</span> {formatTimeUK(invoice.createdAt ?? invoice.date)}</span>
                         <span className="capitalize"><span className="font-semibold">Status:</span> {invoice.status}</span>
@@ -568,7 +569,7 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                       </div>
                       <div className="sm:text-right">
                         <h2 className="text-3xl font-bold tracking-wide">INVOICE</h2>
-                        <p className="opacity-90"># {invoice.id}</p>
+                        <p className="opacity-90">#{invoice.id}</p>
                         <div className="mt-2 text-sm space-y-0.5 opacity-90">
                           <p><span className="font-semibold">Date:</span> {formatDateUK(invoice.date)}</p>
                           <p><span className="font-semibold">Time:</span> {formatTimeUK(invoice.createdAt ?? invoice.date)}</p>
@@ -589,12 +590,12 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                           ? <Image src={themeSettings.logoUrl} alt={themeSettings.appName} width={104} height={104} className="rounded-lg object-contain" />
                           : <StoreIcon className="h-10 w-10 text-primary" />)}
                         <h2 className="text-3xl font-bold text-gray-800 mt-3">INVOICE</h2>
-                        <p className="text-muted-foreground"># {invoice.id}</p>
+                        <p className="text-muted-foreground">#{invoice.id}</p>
                         <div className="mt-4">
                           <h3 className="font-semibold mb-1">Bill To:</h3>
-                          <p>{invoice.customerName || 'Walk-in Customer'}</p>
-                          {(invoice.customerPhone || customer?.phone) && <p className="text-muted-foreground">{invoice.customerPhone || customer?.phone}</p>}
-                          {(invoice.customerEmail || customer?.email) && <p className="text-muted-foreground">{invoice.customerEmail || customer?.email}</p>}
+                          {getBillToLines(invoice, customer).map((line, index) => (
+                            <p key={`${line.text}-${index}`} className={line.muted ? 'text-muted-foreground' : undefined}>{line.text}</p>
+                          ))}
                         </div>
                       </div>
                       <div className="sm:text-right">
@@ -636,9 +637,9 @@ const FullInvoice = ({ invoice, embedded = false }: FullInvoiceProps) => {
                     {(template === 'modern' || template === 'letterhead') ? (
                     <div>
                         <h3 className="font-semibold mb-1">Bill To:</h3>
-                        <p>{invoice.customerName || 'Walk-in Customer'}</p>
-                        {(invoice.customerPhone || customer?.phone) && <p className="text-muted-foreground">{invoice.customerPhone || customer?.phone}</p>}
-                        {(invoice.customerEmail || customer?.email) && <p className="text-muted-foreground">{invoice.customerEmail || customer?.email}</p>}
+                        {getBillToLines(invoice, customer).map((line, index) => (
+                          <p key={`${line.text}-${index}`} className={line.muted ? 'text-muted-foreground' : undefined}>{line.text}</p>
+                        ))}
                     </div>
                     ) : <div />}
                     {invoice.customData && Object.keys(invoice.customData).length > 0 && (

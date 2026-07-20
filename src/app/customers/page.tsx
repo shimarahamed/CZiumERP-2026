@@ -105,8 +105,9 @@ export default function CustomersPage() {
     });
 
     const canManage = user?.role === 'admin' || user?.role === 'manager';
-    // Cashiers can add customers at the register (Sales & Customers grants them 'create'
-    // in rbac.ts) but can't edit/delete existing records — that stays admin/manager only.
+    // Cashiers can add and edit customer details from the register/sales flow,
+    // while delete remains admin/manager only.
+    const canEdit = canManage || user?.role === 'cashier';
     const canAdd = canManage || user?.role === 'cashier';
     const columnVisibility = useColumnVisibility('customers', CUSTOMERS_COLUMNS);
     const { isVisible } = columnVisibility;
@@ -306,7 +307,7 @@ export default function CustomersPage() {
                                       className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
                                       items={[
                                         { label: 'View Details', icon: <Eye className="h-4 w-4" />, onClick: () => setHistoryCustomer(customer) },
-                                        ...(canManage ? [{ label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => handleOpenForm(customer) }] : []),
+                                        ...(canEdit ? [{ label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => handleOpenForm(customer) }] : []),
                                         { separator: true as const },
                                         ...(canManage ? [{ label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => setCustomerToDelete(customer), variant: 'destructive' as const }] : []),
                                       ]}
@@ -349,7 +350,7 @@ export default function CustomersPage() {
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                     <DropdownMenuItem onClick={() => setHistoryCustomer(customer)}>View Details & History</DropdownMenuItem>
-                                                    {canManage && <DropdownMenuItem onClick={() => handleOpenForm(customer)}>Edit</DropdownMenuItem>}
+                                                    {canEdit && <DropdownMenuItem onClick={() => handleOpenForm(customer)}>Edit</DropdownMenuItem>}
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleEnrichCustomer(customer.id); }} disabled={!customer.company || enrichingCustomerId === customer.id}>
                                                         {enrichingCustomerId === customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4" />}

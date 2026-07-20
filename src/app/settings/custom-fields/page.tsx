@@ -52,6 +52,8 @@ function CustomFieldsPageInner() {
   const [optionsText, setOptionsText] = useState('');
   const [linkSourceKey, setLinkSourceKey] = useState<string>('__none__');
   const [linkOffset, setLinkOffset] = useState('');
+  const [unit, setUnit] = useState('');
+  const [showUnit, setShowUnit] = useState(true);
 
   // Edit dialog — reuses the same field-config shape as "Add", prefilled from
   // the definition being edited. Key/id/seededBy/createdAt are never changed;
@@ -63,6 +65,8 @@ function CustomFieldsPageInner() {
   const [editOptionsText, setEditOptionsText] = useState('');
   const [editLinkSourceKey, setEditLinkSourceKey] = useState<string>('__none__');
   const [editLinkOffset, setEditLinkOffset] = useState('');
+  const [editUnit, setEditUnit] = useState('');
+  const [editShowUnit, setEditShowUnit] = useState(true);
 
   const columnVisibility = useColumnVisibility('custom-fields', CUSTOM_FIELDS_COLUMNS);
   const { isVisible } = columnVisibility;
@@ -100,6 +104,8 @@ function CustomFieldsPageInner() {
       entity, key, label: trimmed, fieldType, required,
       ...(options ? { options } : {}),
       ...(linked ? { linkedFrom: linked } : {}),
+      ...(unit.trim() ? { unit: unit.trim() } : {}),
+      ...(fieldType === 'number' || fieldType === 'text' ? { showUnit: showUnit } : {}),
       order: forEntity.length + 1,
       createdAt: new Date().toISOString(),
     };
@@ -107,7 +113,7 @@ function CustomFieldsPageInner() {
     addActivityLog('Custom Field Added', `${entity}: ${trimmed} (${fieldType})`);
     toast({ title: 'Field added', description: `${trimmed} on ${entity}` });
     setLabel(''); setRequired(false); setOptionsText(''); setFieldType('text');
-    setLinkSourceKey('__none__'); setLinkOffset('');
+    setLinkSourceKey('__none__'); setLinkOffset(''); setUnit(''); setShowUnit(true);
   };
 
   const moveField = (def: CustomFieldDefinition, direction: 'up' | 'down') => {
@@ -142,6 +148,8 @@ function CustomFieldsPageInner() {
     setEditOptionsText((def.options ?? []).join(', '));
     setEditLinkSourceKey(def.linkedFrom?.sourceKey ?? '__none__');
     setEditLinkOffset(def.linkedFrom ? String(def.linkedFrom.offset) : '');
+    setEditUnit(def.unit ?? '');
+    setEditShowUnit(def.showUnit ?? !!def.unit);
   };
 
   const editNumberFieldsForEntity = editingField
@@ -166,7 +174,16 @@ function CustomFieldsPageInner() {
       ? { sourceKey: editLinkSourceKey, offset: Number(editLinkOffset) || 0 }
       : undefined;
     setCustomFieldDefinitions(prev => prev.map(d => d.id === editingField.id
-      ? { ...d, label: trimmed, fieldType: editFieldType, required: editRequired, options, linkedFrom: linked }
+      ? {
+          ...d,
+          label: trimmed,
+          fieldType: editFieldType,
+          required: editRequired,
+          options,
+          linkedFrom: linked,
+          unit: editUnit.trim() || undefined,
+          showUnit: (editFieldType === 'number' || editFieldType === 'text') ? editShowUnit : undefined,
+        }
       : d));
     addActivityLog('Custom Field Updated', `${editingField.entity}: ${trimmed}`);
     toast({ title: 'Field updated', description: trimmed });
@@ -219,8 +236,21 @@ function CustomFieldsPageInner() {
                 <Input value={optionsText} onChange={e => setOptionsText(e.target.value)} placeholder="Small, Medium, Large" />
               </div>
             )}
-            {fieldType === 'number' && numberFieldsForEntity.length > 0 && (
+            {(fieldType === 'number' || fieldType === 'text') && (
               <div className="grid sm:grid-cols-2 gap-3 rounded-lg border p-3 bg-muted/20">
+                <div className="space-y-1.5">
+                  <Label>Unit (optional)</Label>
+                  <Input value={unit} onChange={e => setUnit(e.target.value)} placeholder="e.g. KM" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Show unit in display</Label>
+                  <div className="flex items-center gap-2 h-9">
+                    <Checkbox checked={showUnit} onCheckedChange={c => setShowUnit(c === true)} />
+                    <span className="text-sm text-muted-foreground">Append the unit to printed/read-only values</span>
+                  </div>
+                </div>
+                {fieldType === 'number' && numberFieldsForEntity.length > 0 && (
+                  <div className="sm:col-span-2 grid sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Auto-fill from (optional)</Label>
                   <Select value={linkSourceKey} onValueChange={setLinkSourceKey}>
@@ -242,10 +272,12 @@ function CustomFieldsPageInner() {
                     />
                   </div>
                 )}
-                {linkSourceKey !== '__none__' && (
-                  <p className="sm:col-span-2 text-xs text-muted-foreground">
-                    When {numberFieldsForEntity.find(f => f.key === linkSourceKey)?.label} is entered, this field auto-fills to that value + offset. Staff can still edit the result and the offset per record.
-                  </p>
+                    {linkSourceKey !== '__none__' && (
+                      <p className="sm:col-span-2 text-xs text-muted-foreground">
+                        When {numberFieldsForEntity.find(f => f.key === linkSourceKey)?.label} is entered, this field auto-fills to that value + offset. Staff can still edit the result and the offset per record.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -354,22 +386,37 @@ function CustomFieldsPageInner() {
                   <Input value={editOptionsText} onChange={e => setEditOptionsText(e.target.value)} placeholder="Small, Medium, Large" />
                 </div>
               )}
-              {editFieldType === 'number' && editNumberFieldsForEntity.length > 0 && (
+              {(editFieldType === 'number' || editFieldType === 'text') && (
                 <div className="grid sm:grid-cols-2 gap-3 rounded-lg border p-3 bg-muted/20">
                   <div className="space-y-1.5">
-                    <Label>Auto-fill from (optional)</Label>
-                    <Select value={editLinkSourceKey} onValueChange={setEditLinkSourceKey}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None — independent field</SelectItem>
-                        {editNumberFieldsForEntity.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Label>Unit (optional)</Label>
+                    <Input value={editUnit} onChange={e => setEditUnit(e.target.value)} placeholder="e.g. KM" />
                   </div>
-                  {editLinkSourceKey !== '__none__' && (
-                    <div className="space-y-1.5">
-                      <Label>Default offset</Label>
-                      <Input type="number" value={editLinkOffset} onChange={e => setEditLinkOffset(e.target.value)} placeholder="e.g. 5000" />
+                  <div className="space-y-1.5">
+                    <Label>Show unit in display</Label>
+                    <div className="flex items-center gap-2 h-9">
+                      <Checkbox checked={editShowUnit} onCheckedChange={c => setEditShowUnit(c === true)} />
+                      <span className="text-sm text-muted-foreground">Append the unit to printed/read-only values</span>
+                    </div>
+                  </div>
+                  {editFieldType === 'number' && editNumberFieldsForEntity.length > 0 && (
+                    <div className="sm:col-span-2 grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Auto-fill from (optional)</Label>
+                        <Select value={editLinkSourceKey} onValueChange={setEditLinkSourceKey}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None — independent field</SelectItem>
+                            {editNumberFieldsForEntity.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {editLinkSourceKey !== '__none__' && (
+                        <div className="space-y-1.5">
+                          <Label>Default offset</Label>
+                          <Input type="number" value={editLinkOffset} onChange={e => setEditLinkOffset(e.target.value)} placeholder="e.g. 5000" />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

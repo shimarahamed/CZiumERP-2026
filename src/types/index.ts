@@ -1499,6 +1499,10 @@ export type CustomFieldDefinition = {
   required?: boolean;
   /** Choices for fieldType === 'select'. */
   options?: string[];
+  /** Optional unit shown after numeric/text values in printed views, e.g. KM. */
+  unit?: string;
+  /** Whether to show the unit suffix in read-only displays. Defaults to true when unit is present. */
+  showUnit?: boolean;
   /** Sort order within the entity's field list. */
   order?: number;
   /** Blueprint id that seeded this field, if any (vs. tenant-added). */
