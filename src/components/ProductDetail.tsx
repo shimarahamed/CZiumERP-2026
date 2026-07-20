@@ -72,7 +72,7 @@ const ProductDetail = ({ product, onEdit, onDuplicate }: ProductDetailProps) => 
                 </DialogTitle>
                 <DialogDescription>{product.description || 'No description available.'}</DialogDescription>
             </DialogHeader>
-            <div className="py-4 space-y-6 max-h-[65vh] overflow-y-auto px-1">
+            <div className="overflow-y-auto py-4 space-y-6 px-1">
                 <div className="flex flex-col sm:flex-row gap-4">
                     <div className="relative h-40 w-40 shrink-0 rounded-xl border bg-muted/40 flex items-center justify-center overflow-hidden mx-auto sm:mx-0">
                         {product.imageUrl ? (

@@ -39,6 +39,7 @@ import { MoreHorizontal, PlusCircle, Package, Trash2, ImageIcon, X, Upload, Cred
 import { PRODUCT_ICONS, resolveIconName } from '@/lib/product-icon';
 import { formatNumber, discountedUnitPrice } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import { calculateStockAdjustment } from '@/lib/stock-adjustment';
 import { useColumnVisibility, type ColumnDef } from '@/hooks/use-column-visibility';
 import { ColumnVisibilityMenu } from '@/components/ColumnVisibilityMenu';
 
@@ -109,6 +110,7 @@ export default function InventoryPage() {
     const [pendingMerge, setPendingMerge] = useState<{ existing: Product; incoming: Product } | null>(null);
     const [productToRestock, setProductToRestock] = useState<Product | null>(null);
     const [restockQty, setRestockQty] = useState('');
+    const [restockMode, setRestockMode] = useState<'add' | 'remove' | 'set'>('add');
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
     const [categoryToDelete, setCategoryToDelete] = useState<ProductCategory | null>(null);
     const [customData, setCustomData] = useState<Record<string, unknown>>({});
@@ -295,14 +297,15 @@ export default function InventoryPage() {
         if (!productToRestock) return;
         const qty = Number(restockQty);
         if (!Number.isFinite(qty) || qty === 0) {
-            toast({ variant: 'destructive', title: 'Enter a quantity', description: 'Use a positive number to add, negative to remove.' });
+            toast({ variant: 'destructive', title: 'Enter a quantity', description: 'Use a positive amount for stock changes and choose add/remove/set mode.' });
             return;
         }
-        const newStock = Math.max(0, productToRestock.stock + qty);
-        const appliedQty = newStock - productToRestock.stock;
+
+        const adjustment = calculateStockAdjustment(productToRestock.stock, qty, restockMode);
+        const newStock = adjustment.newStock;
         const historyEntry = {
             id: `stock-${Date.now()}`,
-            quantity: appliedQty,
+            quantity: adjustment.appliedQty,
             previousStock: productToRestock.stock,
             newStock,
             createdAt: new Date().toISOString(),
@@ -310,10 +313,15 @@ export default function InventoryPage() {
             userName: user?.name,
         };
         setProducts(products.map(p => p.id === productToRestock.id ? { ...p, stock: newStock, stockHistory: [...(p.stockHistory ?? []), historyEntry] } : p));
-        addActivityLog('Stock Adjusted', `${qty > 0 ? 'Added' : 'Removed'} ${Math.abs(qty)} to ${productToRestock.name} (now ${newStock}).`);
+        const actionLabel = restockMode === 'add' ? 'Added' : restockMode === 'remove' ? 'Removed' : 'Set';
+        const detailText = restockMode === 'set'
+            ? `Set ${productToRestock.name} stock to ${newStock}.`
+            : `${actionLabel} ${Math.abs(qty)} ${restockMode === 'remove' ? 'from' : 'to'} ${productToRestock.name} (now ${newStock}).`;
+        addActivityLog('Stock Adjusted', detailText);
         toast({ title: 'Stock updated', description: `${productToRestock.name} is now at ${newStock}.` });
         setProductToRestock(null);
         setRestockQty('');
+        setRestockMode('add');
     };
 
     // `duplicate: true` prefills the form from an existing product but saves as a NEW one.
@@ -669,9 +677,9 @@ export default function InventoryPage() {
                                                         variant="outline"
                                                         size="sm"
                                                         className="h-8 gap-1 whitespace-nowrap"
-                                                        onClick={() => { setProductToRestock(product); setRestockQty(''); }}
+                                                        onClick={() => { setProductToRestock(product); setRestockQty(''); setRestockMode('add'); }}
                                                     >
-                                                        <PlusCircle className="h-3.5 w-3.5" /> Add Stock
+                                                        <PlusCircle className="h-3.5 w-3.5" /> Adjust Stock
                                                     </Button>
                                                 )}
                                                 <DropdownMenu>
@@ -687,7 +695,7 @@ export default function InventoryPage() {
                                                         <DropdownMenuItem onClick={() => handleOpenForm(product)}>Edit</DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => handleOpenForm(product, { duplicate: true })}>Duplicate</DropdownMenuItem>
                                                         {product.kind !== 'service' && (
-                                                            <DropdownMenuItem onClick={() => { setProductToRestock(product); setRestockQty(''); }}>Add stock</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => { setProductToRestock(product); setRestockQty(''); setRestockMode('add'); }}>Adjust stock</DropdownMenuItem>
                                                         )}
                                                         {canDelete && (
                                                             <DropdownMenuItem className="text-destructive" onClick={() => setProductToDelete(product)}>Delete</DropdownMenuItem>
@@ -737,7 +745,7 @@ export default function InventoryPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 py-2 max-h-[75vh] overflow-y-auto px-2">
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 min-h-0 space-y-3 overflow-y-auto py-2 px-2">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <FormField control={form.control} name="name" render={({ field }) => (
                                     <FormItem className="col-span-2"><FormLabel>{watchedKind === 'service' ? 'Service' : 'Product'} Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -1153,23 +1161,34 @@ export default function InventoryPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
-            <Dialog open={!!productToRestock} onOpenChange={(open) => { if (!open) { setProductToRestock(null); setRestockQty(''); } }}>
+            <Dialog open={!!productToRestock} onOpenChange={(open) => { if (!open) { setProductToRestock(null); setRestockQty(''); setRestockMode('add'); } }}>
                 <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>Add stock — {productToRestock?.name}</DialogTitle>
+                        <DialogTitle>Adjust stock — {productToRestock?.name}</DialogTitle>
                         <DialogDescription>
-                            Current stock: {productToRestock?.stock ?? 0}. Enter a quantity to add (or a negative number to remove) for emergency / contingency restocking.
+                            Current stock: {productToRestock?.stock ?? 0}. Choose whether to add, remove, or set stock for corrections and restocking.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2">
-                        <Label htmlFor="restock-qty">Quantity to add</Label>
-                        <Input id="restock-qty" type="number" value={restockQty} onChange={(e) => setRestockQty(e.target.value)} placeholder="e.g. 50" autoFocus />
+                        <Label htmlFor="restock-mode">Adjustment type</Label>
+                        <Select value={restockMode} onValueChange={(value) => setRestockMode(value as 'add' | 'remove' | 'set')}>
+                            <SelectTrigger id="restock-mode">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="add">Add stock</SelectItem>
+                                <SelectItem value="remove">Remove stock</SelectItem>
+                                <SelectItem value="set">Set stock level</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Label htmlFor="restock-qty">{restockMode === 'set' ? 'New stock level' : restockMode === 'remove' ? 'Quantity to remove' : 'Quantity to add'}</Label>
+                        <Input id="restock-qty" type="number" value={restockQty} onChange={(e) => setRestockQty(e.target.value)} placeholder={restockMode === 'set' ? 'e.g. 25' : 'e.g. 50'} autoFocus />
                         {restockQty !== '' && Number.isFinite(Number(restockQty)) && (
-                            <p className="text-xs text-muted-foreground">New stock will be {Math.max(0, (productToRestock?.stock ?? 0) + Number(restockQty))}.</p>
+                            <p className="text-xs text-muted-foreground">New stock will be {calculateStockAdjustment(productToRestock?.stock ?? 0, Number(restockQty), restockMode).newStock}.</p>
                         )}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => { setProductToRestock(null); setRestockQty(''); }}>Cancel</Button>
+                        <Button variant="outline" onClick={() => { setProductToRestock(null); setRestockQty(''); setRestockMode('add'); }}>Cancel</Button>
                         <Button onClick={handleRestock}>Update stock</Button>
                     </DialogFooter>
                 </DialogContent>
