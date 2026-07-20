@@ -65,7 +65,7 @@ const productSchema = z.object({
   cost: z.coerce.number().min(0, "Cost must be a non-negative number."),
   discount: z.coerce.number().min(0, "Discount cannot be negative.").optional(),
   discountType: z.enum(['percent', 'amount']).default('amount'),
-  stock: z.coerce.number().int().min(0, "Stock cannot be negative."),
+  stock: z.coerce.number().min(0, "Stock cannot be negative."),
   sku: z.string().optional(),
   category: z.string().optional(),
   description: z.string().optional(),
@@ -297,7 +297,7 @@ export default function InventoryPage() {
         if (!productToRestock) return;
         const qty = Number(restockQty);
         if (!Number.isFinite(qty) || qty === 0) {
-            toast({ variant: 'destructive', title: 'Enter a quantity', description: 'Use a positive amount for stock changes and choose add/remove/set mode.' });
+            toast({ variant: 'destructive', title: 'Enter a quantity', description: 'Use a numeric value for stock adjustments.' });
             return;
         }
 
@@ -335,6 +335,7 @@ export default function InventoryPage() {
               ...product,
               name: product.name,
               // Keeping name/SKU lets a duplicate be recognized and merged.
+              stock: product.stock ?? 0,
               sku: product.sku ?? '',
               barcode: duplicate ? '' : (product.barcode ?? ''),
               kind: product.kind ?? 'product',
@@ -388,7 +389,7 @@ export default function InventoryPage() {
           warrantyDate: data.warrantyDate ? data.warrantyDate.toISOString() : undefined,
           reorderThreshold: data.reorderThreshold,
           // Services hold no stock of their own; products keep no service links.
-          stock: isService ? 0 : data.stock,
+          stock: isService ? 0 : Number(data.stock),
           serviceLinks: isService ? data.serviceLinks.filter(l => l.productId && l.quantity > 0) : [],
           imageUrl: imageUrl || undefined,
           iconName: iconName || undefined,
@@ -927,7 +928,14 @@ export default function InventoryPage() {
                                 )} />
                                 {watchedKind !== 'service' && (
                                     <FormField control={form.control} name="stock" render={({ field }) => (
-                                        <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input type="number" {...field} disabled={!!productToEdit} /></FormControl>
+                                        <FormItem><FormLabel>Stock Quantity</FormLabel><FormControl><Input
+                                        type="number"
+                                        step="1"
+                                        inputMode="numeric"
+                                        value={field.value ?? 0}
+                                        onChange={(e) => field.onChange(e.target.value === '' ? 0 : Math.trunc(Number(e.target.value)))}
+                                        disabled={!!productToEdit}
+                                    /></FormControl>
                                             {productToEdit && <p className="text-xs text-muted-foreground">Use “Add stock” on the row to adjust.</p>}
                                             <FormMessage />
                                         </FormItem>
@@ -1182,7 +1190,7 @@ export default function InventoryPage() {
                             </SelectContent>
                         </Select>
                         <Label htmlFor="restock-qty">{restockMode === 'set' ? 'New stock level' : restockMode === 'remove' ? 'Quantity to remove' : 'Quantity to add'}</Label>
-                        <Input id="restock-qty" type="number" value={restockQty} onChange={(e) => setRestockQty(e.target.value)} placeholder={restockMode === 'set' ? 'e.g. 25' : 'e.g. 50'} autoFocus />
+                        <Input id="restock-qty" type="number" step="0.01" inputMode="decimal" value={restockQty} onChange={(e) => setRestockQty(e.target.value)} placeholder={restockMode === 'set' ? 'e.g. 25' : 'e.g. 50'} autoFocus />
                         {restockQty !== '' && Number.isFinite(Number(restockQty)) && (
                             <p className="text-xs text-muted-foreground">New stock will be {calculateStockAdjustment(productToRestock?.stock ?? 0, Number(restockQty), restockMode).newStock}.</p>
                         )}

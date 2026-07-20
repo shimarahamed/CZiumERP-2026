@@ -17,4 +17,8 @@ describe('calculateStockAdjustment', () => {
   it('sets stock to an explicit value', () => {
     expect(calculateStockAdjustment(10, 4, 'set')).toEqual({ newStock: 4, appliedQty: -6 });
   });
+
+  it('preserves decimal stock values while adding', () => {
+    expect(calculateStockAdjustment(10.7, 3.9, 'add')).toEqual({ newStock: 14.6, appliedQty: 3.9 });
+  });
 });
