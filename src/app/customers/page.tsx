@@ -104,11 +104,9 @@ export default function CustomersPage() {
         resolver: zodResolver(customerSchema),
     });
 
-    const canManage = user?.role === 'admin' || user?.role === 'manager';
-    // Cashiers can add and edit customer details from the register/sales flow,
-    // while delete remains admin/manager only.
-    const canEdit = canManage || user?.role === 'cashier';
-    const canAdd = canManage || user?.role === 'cashier';
+    const canManage = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier';
+    const canEdit = canManage;
+    const canAdd = canManage;
     const columnVisibility = useColumnVisibility('customers', CUSTOMERS_COLUMNS);
     const { isVisible } = columnVisibility;
 

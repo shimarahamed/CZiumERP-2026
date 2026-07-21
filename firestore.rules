@@ -258,7 +258,7 @@ service cloud.firestore {
       match /customers/{id} {
         allow read, create, update: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
-        allow delete: if isManager(tenantId) && tenantActive(tenantId)
+        allow delete: if isSalesStaff(tenantId) && tenantActive(tenantId)
           && moduleEnabled(tenantId, 'Sales & Customers');
       }
       match /refunds/{id} {

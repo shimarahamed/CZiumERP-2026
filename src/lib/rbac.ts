@@ -29,7 +29,7 @@ const DEFAULT_PERMISSIONS: Record<Role, ModulePermission[]> = {
     { module: 'General', actions: ['view'] },
     // 'edit' is what the POS page (register) requires — a cashier ringing up a
     // sale updates invoices, customers, and stock, so they need it here.
-    { module: 'Sales & Customers', actions: ['view', 'create', 'edit'] },
+    { module: 'Sales & Customers', actions: ['view', 'create', 'edit', 'delete'] },
     // Cashiers get full inventory/supply-chain access (view, create, edit) so they
     // can manage stock, vendors, and purchase orders when needed — e.g. urgent
     // restocking. 'approve' is withheld: PO approval stays an admin/manager decision.
